@@ -80,12 +80,24 @@ public:
 	/////////////////////////////////////////////////////////////////////////
 	inline int GetFreeSize(void)
 	{
-		return _capacity - 1 - GetUseSize();
+		int front = _front;
+		int rear = _rear;
+		int useSize;
+		if (front <= rear)
+			useSize = rear - front;
+		else
+			useSize = _capacity - front + rear;
+		return _capacity - 1 - useSize;
 	};
 
 	inline bool IsFull()
 	{
 		return GetFreeSize() == 0;
+	}
+
+	inline char* GetBufferPtr()
+	{
+		return _buffer;
 	}
 
 	/////////////////////////////////////////////////////////////////////////
@@ -268,8 +280,75 @@ public:
 	{
 		return _buffer + _rear;
 	}
-public:
-	//private:
+
+	/////////////////////////////////////////////////////////////////////////
+	// 
+	// WSABUF 링버퍼 send용
+	// 
+	/////////////////////////////////////////////////////////////////////////
+	void SetRecvWsabufs(WSABUF* wsabufs)
+	{
+		int front = _front;
+		int rear = _rear;
+		int useSize;
+		if (front <= rear)
+			useSize = rear - front;
+		else
+			useSize = _capacity - front + rear;
+
+		int freeSize =  _capacity - 1 - useSize;
+
+		wsabufs[0].buf = _buffer + rear;
+
+		int directEnqueueSize;
+
+		if (_front > _rear)
+			directEnqueueSize = front - rear - 1;
+		// 사이즈 검증을 하지 않기 때문에 front0일때의 예외처리가 필요
+		else if (_front == 0)
+			directEnqueueSize = _capacity - rear - 1;
+		else
+			directEnqueueSize = _capacity - rear;
+
+		wsabufs[0].len = directEnqueueSize;
+
+		wsabufs[1].buf = _buffer;
+		wsabufs[1].len = freeSize - wsabufs[0].len;
+	}
+
+	/////////////////////////////////////////////////////////////////////////
+	// 
+	// WSABUF 링버퍼 recv용
+	// 
+	/////////////////////////////////////////////////////////////////////////
+	void SetSendWsabufs(WSABUF* wsabufs)
+	{
+		int front = _front;
+		int rear = _rear;
+		int useSize;
+		if (front <= rear)
+			useSize = rear - front;
+		else
+			useSize = _capacity - front + rear;
+
+
+		wsabufs[0].buf = _buffer + front;
+
+		int directDequeueSize;
+		if (_front > _rear)
+			directDequeueSize = _capacity - front;
+		else
+		{
+			directDequeueSize = rear - front;
+		}
+
+		wsabufs[0].len = directDequeueSize;
+
+		wsabufs[1].buf = _buffer;
+		wsabufs[1].len = (useSize - wsabufs[0].len);
+	}
+
+private:
 	char* _buffer;
 	int _rear = 0;
 	int _front = 0;

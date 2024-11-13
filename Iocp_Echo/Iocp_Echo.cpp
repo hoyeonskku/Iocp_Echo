@@ -2,11 +2,14 @@
 #include <thread>
 #include "NetLib.h"
 #include "Windows.h"
+#include "Session.h"
+#include "unordered_map"
+
 
 
 int main()
 {
-	HANDLE thread[3];
+	HANDLE thread[5];
 	// 입출력 완료 포트 생성
 	int WSAStartUpRetval;
 
@@ -67,9 +70,40 @@ int main()
 
 	thread[0] = (HANDLE)_beginthreadex(nullptr, 0, &AcceptThread, &hcp, 0, nullptr);
 	thread[1] = (HANDLE)_beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
-	//thread[2] = (HANDLE) _beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
+	thread[2] = (HANDLE) _beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
+	thread[3] = (HANDLE) _beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
+	thread[4] = (HANDLE) _beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
+
+	for (auto& pair : g_sessionMap)
+	{
+		if (pair.second->_IOCount != 0)
+		{
+			CancelIo((HANDLE)pair.second->_sock);
+		}
+	}
+
+
 	while (true)
 	{
+		if (GetAsyncKeyState('Q') & 0x8000) {
+			// PQCS 구조체 동적 할당
+
+			// IOCP에 완료 패킷 전송
+			for (int i = 0 ; i < 5; i++)
+				PostQueuedCompletionStatus(hcp, 0, 0, 0);
+			std::cout << "'q' 키 입력: PQCS 전송 완료" << std::endl;
+			break;
+		}
+	}
+
+	g_bShutdown = true;
+	closesocket(listenSocket);
+
+	WaitForMultipleObjects(5, thread, true, INFINITE);
+
+	for (auto& pair : g_sessionMap)
+	{
+		delete pair.second;
 	}
 
 	// 윈속 종료

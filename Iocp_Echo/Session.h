@@ -8,14 +8,9 @@ using namespace std;
 class Session
 {
 public:
-	Session(SOCKET sock, SOCKADDR_IN addr)
+	Session(SOCKET sock, SOCKADDR_IN addr, UINT64 sessionID)
+		: _sock(sock), _addr(addr), _recvBuf(10), _sendBuf(10), _sessionID(sessionID)
 	{
-		_sock = sock;
-		_addr = addr;
-		_recvBuf = CRingBuffer(10000);
-		_sendBuf = CRingBuffer(10000);
-		//ZeroMemory(&_recvOvl, sizeof(_recvOvl));
-		//ZeroMemory(&_sendOvl, sizeof(_sendOvl));
 		InitializeCriticalSection(&_cs);
 	}
 
@@ -36,5 +31,6 @@ public:
 
 	CRITICAL_SECTION _cs;
 	long _IOCount = 0;
-	bool _deleteFlag = false;
+	long _sendFlag = false;
+	UINT64 _sessionID;
 };
