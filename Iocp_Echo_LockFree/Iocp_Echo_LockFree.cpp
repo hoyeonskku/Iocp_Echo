@@ -4,6 +4,8 @@
 #include "Windows.h"
 #include "Session.h"
 #include "unordered_map"
+#pragma comment (lib, "winmm")
+
 
 int main()
 {
@@ -11,7 +13,7 @@ int main()
 	// 입출력 완료 포트 생성
 	int WSAStartUpRetval;
 
-
+	timeBeginPeriod(1);
 	WSADATA wsaData;
 
 	int WSAStartUpError;
@@ -73,9 +75,9 @@ int main()
 
 	thread[0] = (HANDLE)_beginthreadex(nullptr, 0, &AcceptThread, &hcp, 0, nullptr);
 	thread[1] = (HANDLE)_beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
-	//thread[2] = (HANDLE)_beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
-	//thread[3] = (HANDLE)_beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
-	//thread[4] = (HANDLE)_beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
+	thread[2] = (HANDLE)_beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
+	thread[3] = (HANDLE)_beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
+	thread[4] = (HANDLE)_beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
 
 
 

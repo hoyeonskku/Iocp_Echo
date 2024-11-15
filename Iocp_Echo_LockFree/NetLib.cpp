@@ -17,14 +17,16 @@ std::unordered_map<int, Session*> g_sessionMap;
 unsigned int WINAPI AcceptThread(void* arg)
 {
 	HANDLE hrd = *(HANDLE*)arg;
-	
+	int IoctlsocketRetval;
+
 	InitializeCriticalSection(&g_sessionMapCs);
-	// 데이터 통신에 사용할 변수
 	SOCKET client_sock;
 	SOCKADDR_IN clientaddr;
 	int addrlen;
+	DWORD recvbytes, flags;
+	int retval;
 
-	while (1) 
+	while (1)
 	{
 		// accept()
 		addrlen = sizeof(clientaddr);
@@ -36,8 +38,6 @@ unsigned int WINAPI AcceptThread(void* arg)
 				DebugBreak();
 			break;
 		}
-		/*printf("[TCP 서버] 클라이언트 접속: IP 주소=%s, 포트 번호=%d\n",
-			inet_ntoa(clientaddr.sin_addr), ntohs(clientaddr.sin_port));*/
 
 		Session* pSession = new Session(client_sock, clientaddr, sessionIDCount++);
 
@@ -45,9 +45,7 @@ unsigned int WINAPI AcceptThread(void* arg)
 		g_sessionMap.insert({ pSession->_sessionID, pSession });
 		LeaveCriticalSection(&g_sessionMapCs);
 
-
 		CreateIoCompletionPort((HANDLE)client_sock, hrd, (ULONG_PTR)pSession, 0);
-
 		RecvPost(pSession);
 	}
 	return 0;
@@ -58,46 +56,38 @@ unsigned int WINAPI NetworkThread(void* arg)
 	int retval;
 	HANDLE hcp = *(HANDLE*)arg;
 
-	while (1) 
+	while (1)
 	{
-		// 비동기 입출력 완료 기다리기
 		DWORD cbTransferred;
+		SOCKET* client_sock;
 		Session* pSession;
 		WSAOVERLAPPED* ovl;
+		WSABUF wsabuf;
 
 		retval = GetQueuedCompletionStatus(hcp, &cbTransferred,
 			(PULONG_PTR)&pSession, &ovl, INFINITE);
 
-		if (cbTransferred == 0 && pSession  == 0 && ovl == 0)
+		if (cbTransferred == 0 && pSession == 0 && ovl == 0)
 			return 0;
 
-		if (cbTransferred == 0)
-		{
+		if (cbTransferred == 0)		{}
 
-		}
 		else if (&pSession->_recvOvl == ovl)
-		{
 			ProcessRecvMessage(pSession, cbTransferred);
-		}
+
 		else if (&pSession->_sendOvl == ovl)
 		{
 			pSession->_sendBuf.MoveFront(cbTransferred);
-			// 어셈 2줄이라 인터락 해야함
-			InterlockedExchange(&pSession->_sendFlag, 0);
-			// 상대방이 send를 하기 전에 먼저 큐에 넣은 후(1번조건), 그 다음에 send를 완료하면 빈 상태에서 send하게 된다. 그래서 다시 한번 소유권 얻은 후 사이즈 체크(3번조건)
+			pSession->_sendFlag = false;
 			if (pSession->_sendBuf.GetUseSize() > 0)
 				SendPost(pSession);
 			else
-			{
-
-			}
+				InterlockedExchange(&pSession->_sendFlag, 0);
 		}
 
 		if (InterlockedDecrement(&pSession->_IOCount) == 0)
-		{
 			Release(pSession->_sessionID);
-		}
-
+		
 	}
 	return 0;
 }
@@ -119,19 +109,15 @@ void RecvPost(Session* pSession)
 		int err = WSAGetLastError();
 		if (err != ERROR_IO_PENDING)
 		{
-			if (err == 10054)
-			{
+			if (err == 10054)	{}
 
-			}
-			else if (err == 10053)
-			{
+			else if (err == 10053)	{}
 
-			}
 			else
-			{
 				DebugBreak();
-			}
+
 			InterlockedDecrement(&pSession->_IOCount);
+
 			return;
 		}
 	}
@@ -139,14 +125,14 @@ void RecvPost(Session* pSession)
 
 void SendPost(Session* pSession)
 {
-	if (InterlockedExchange(&pSession->_sendFlag, 1) != 1)
-		return; 
+	if (InterlockedExchange(&pSession->_sendFlag, 1) == 1)
+		return;
 
 	if (pSession->_sendBuf.GetUseSize() == 0)
 		__debugbreak();
 
 	WSABUF wsabufs[2];
-	
+
 	pSession->_sendBuf.SetSendWsabufs(wsabufs);
 
 	ZeroMemory(&pSession->_sendOvl, sizeof(pSession->_sendOvl));
@@ -160,22 +146,19 @@ void SendPost(Session* pSession)
 		{
 			if (err == 10054)
 			{
+				if (err == 10054) {}
 
-			}
-			else if (err == 10053)
-			{
+				else if (err == 10053) {}
 
+				else
+					DebugBreak();
+
+				InterlockedDecrement(&pSession->_IOCount);
+
+				return;
 			}
-			else
-			{
-				DebugBreak();
-			}
-			InterlockedDecrement(&pSession->_IOCount);
-			
-			return;
 		}
 	}
-	InterlockedExchange(&pSession->_sendFlag, 0);
 }
 
 void ProcessRecvMessage(Session* pSession, int cbTransferred)
@@ -218,65 +201,56 @@ void ProcessRecvMessage(Session* pSession, int cbTransferred)
 			OnRecv(pSession->_sessionID, &packetData);
 		}
 		else
-		{
 			break;
-		}
-
 	}
+
 	RecvPost(pSession);
 }
 void OnRecv(UINT64 sessionID, CPacket* packet)
 {
-	//char ip[INET_ADDRSTRLEN]; // IPv4 주소를 저장할 버퍼
-	// 안전하게 IP 주소 변환 (inet_ntop 사용)
-	/*if (inet_ntop(AF_INET, &(pSession->_addr.sin_addr), ip, sizeof(ip)) == nullptr) {
-		std::cerr << "Failed to convert IP address" << std::endl;
-		return;
-	}
-	printf("[TCP/%s:%d] %.*s\n",
-		ip,
-		ntohs(pSession->_addr.sin_port),
-		packet->GetDataSize(), packet);*/
+	EnterCriticalSection(&g_sessionMapCs);
 	auto it = g_sessionMap.find(sessionID);
+
 	if (it != g_sessionMap.end())
-	{
 		SendPacket(sessionID, packet);
-	}
 	else
-	{
 		DebugBreak();
-	}
+
+	LeaveCriticalSection(&g_sessionMapCs);
 }
 
 bool Release(UINT64 sessionID)
 {
 	EnterCriticalSection(&g_sessionMapCs);
+
 	auto it = g_sessionMap.find(sessionID);
-	if (it != g_sessionMap.end()) 
+	if (it != g_sessionMap.end())
 	{
-		/*printf("[TCP 서버] 클라이언트 종료: IP 주소=%s, 포트 번호=%d\n",
-			inet_ntoa(it->second->_addr.sin_addr), ntohs(it->second->_addr.sin_port));*/
 		closesocket(it->second->_sock);
 		delete it->second;
 		g_sessionMap.erase(it);
 		LeaveCriticalSection(&g_sessionMapCs);
 		return true;
 	}
+
 	LeaveCriticalSection(&g_sessionMapCs);
 	return false;
 }
 
 void SendPacket(UINT64 sessionID, CPacket* packet)
 {
+	EnterCriticalSection(&g_sessionMapCs);
 	auto it = g_sessionMap.find(sessionID);
+	LeaveCriticalSection(&g_sessionMapCs);
+
 	short size;
 	*packet >> size;
 	UINT64 data;
 	*packet >> data;
 
-	Session* pSession = it->second;
+	it->second->_sendBuf.Enqueue((const char*)&size, sizeof(short));
+	it->second->_sendBuf.Enqueue((const char*)&data, size);
 
-	pSession->_sendBuf.Enqueue((const char*)&size, sizeof(short));
-	pSession->_sendBuf.Enqueue((const char*)&data, size);
-	SendPost(it->second);
+	if (it->second->_sendBuf.GetUseSize() > 0)
+		SendPost(it->second);
 }
