@@ -17,15 +17,12 @@ std::unordered_map<int, Session*> g_sessionMap;
 unsigned int WINAPI AcceptThread(void* arg)
 {
 	HANDLE hrd = *(HANDLE*)arg;
-	int IoctlsocketRetval;
 	
 	InitializeCriticalSection(&g_sessionMapCs);
 	// 데이터 통신에 사용할 변수
 	SOCKET client_sock;
 	SOCKADDR_IN clientaddr;
 	int addrlen;
-	DWORD recvbytes, flags;
-	int retval;
 
 	while (1) 
 	{
@@ -65,18 +62,14 @@ unsigned int WINAPI NetworkThread(void* arg)
 	{
 		// 비동기 입출력 완료 기다리기
 		DWORD cbTransferred;
-		SOCKET* client_sock;
 		Session* pSession;
 		WSAOVERLAPPED* ovl;
-		WSABUF wsabuf;
 
 		retval = GetQueuedCompletionStatus(hcp, &cbTransferred,
 			(PULONG_PTR)&pSession, &ovl, INFINITE);
 
 		if (cbTransferred == 0 && pSession  == 0 && ovl == 0)
 			return 0;
-		// 세션 락 획득
-		EnterCriticalSection(&pSession->_cs);
 
 		if (cbTransferred == 0)
 		{
@@ -85,19 +78,19 @@ unsigned int WINAPI NetworkThread(void* arg)
 		else if (&pSession->_recvOvl == ovl)
 		{
 			ProcessRecvMessage(pSession, cbTransferred);
-			// 컨텐츠 로직
-			
-
 		}
 		else if (&pSession->_sendOvl == ovl)
 		{
 			pSession->_sendBuf.MoveFront(cbTransferred);
-			pSession->_sendFlag = false;
+			// 어셈 2줄이라 인터락 해야함
+			InterlockedExchange(&pSession->_sendFlag, 0);
 			// 상대방이 send를 하기 전에 먼저 큐에 넣은 후(1번조건), 그 다음에 send를 완료하면 빈 상태에서 send하게 된다. 그래서 다시 한번 소유권 얻은 후 사이즈 체크(3번조건)
 			if (pSession->_sendBuf.GetUseSize() > 0)
 				SendPost(pSession);
 			else
-				InterlockedExchange(&pSession->_sendFlag, 0);
+			{
+
+			}
 		}
 
 		if (InterlockedDecrement(&pSession->_IOCount) == 0)
@@ -105,8 +98,6 @@ unsigned int WINAPI NetworkThread(void* arg)
 			Release(pSession->_sessionID);
 		}
 
-		// 세션 락 해제
-		LeaveCriticalSection(&pSession->_cs);
 	}
 	return 0;
 }
@@ -148,11 +139,12 @@ void RecvPost(Session* pSession)
 
 void SendPost(Session* pSession)
 {
-	if (InterlockedExchange(&pSession->_sendFlag, 1) == 1)
-		return;
+	if (InterlockedExchange(&pSession->_sendFlag, 1) != 1)
+		return; 
 
 	if (pSession->_sendBuf.GetUseSize() == 0)
 		__debugbreak();
+
 	WSABUF wsabufs[2];
 	
 	pSession->_sendBuf.SetSendWsabufs(wsabufs);
@@ -183,6 +175,7 @@ void SendPost(Session* pSession)
 			return;
 		}
 	}
+	InterlockedExchange(&pSession->_sendFlag, 0);
 }
 
 void ProcessRecvMessage(Session* pSession, int cbTransferred)
@@ -225,9 +218,11 @@ void ProcessRecvMessage(Session* pSession, int cbTransferred)
 			OnRecv(pSession->_sessionID, &packetData);
 		}
 		else
+		{
 			break;
-	}
+		}
 
+	}
 	RecvPost(pSession);
 }
 void OnRecv(UINT64 sessionID, CPacket* packet)
@@ -259,9 +254,6 @@ bool Release(UINT64 sessionID)
 	auto it = g_sessionMap.find(sessionID);
 	if (it != g_sessionMap.end()) 
 	{
-		// 샌드패킷에서 세션락을 풀어주는 상태에서 세션락을 해제하면 아래 코드 실행 가능해짐, 그 이후 세션맵 락을 잡고있는 상태이기 때문에 샌드패킷하는 스레드가 없다는 것을 확신할 수 있음.
-		EnterCriticalSection(&it->second->_cs);
-		LeaveCriticalSection(&it->second->_cs);
 		/*printf("[TCP 서버] 클라이언트 종료: IP 주소=%s, 포트 번호=%d\n",
 			inet_ntoa(it->second->_addr.sin_addr), ntohs(it->second->_addr.sin_port));*/
 		closesocket(it->second->_sock);
@@ -276,19 +268,15 @@ bool Release(UINT64 sessionID)
 
 void SendPacket(UINT64 sessionID, CPacket* packet)
 {
-	EnterCriticalSection(&g_sessionMapCs);
 	auto it = g_sessionMap.find(sessionID);
-	// 세션 맵 락을 이용하여 먼저 세션락을 획득, 그 이후 맵 락을 풀어줘서 세션락만 획득한 상태를 유도,
-	EnterCriticalSection(&it->second->_cs);
-	LeaveCriticalSection(&g_sessionMapCs);
 	short size;
 	*packet >> size;
 	UINT64 data;
 	*packet >> data;
 
-	it->second->_sendBuf.Enqueue((const char*)&size, sizeof(short));
-	it->second->_sendBuf.Enqueue((const char*)&data, size);
+	Session* pSession = it->second;
 
+	pSession->_sendBuf.Enqueue((const char*)&size, sizeof(short));
+	pSession->_sendBuf.Enqueue((const char*)&data, size);
 	SendPost(it->second);
-	LeaveCriticalSection(&it->second->_cs);
 }

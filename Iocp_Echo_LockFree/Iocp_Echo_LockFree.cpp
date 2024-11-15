@@ -5,8 +5,6 @@
 #include "Session.h"
 #include "unordered_map"
 
-
-
 int main()
 {
 	HANDLE thread[5];
@@ -32,7 +30,6 @@ int main()
 	int BindRetval;
 	int ListenRetval;
 	int SocketError;
-	int IoctlsocketError;
 	int BindError;
 	int ListenError;
 
@@ -46,10 +43,10 @@ int main()
 
 	int send_buf_size = 0;
 	setsockopt(listenSocket, SOL_SOCKET, SO_SNDBUF, (const char*)&send_buf_size, sizeof(int));
-	
+
 	linger linger;
 	linger.l_linger = 0;
-	linger.l_onoff = (USHORT) 1;
+	linger.l_onoff = (USHORT)1;
 	setsockopt(listenSocket, SOL_SOCKET, SO_LINGER, (const char*)&linger, sizeof(linger));
 
 
@@ -76,15 +73,15 @@ int main()
 
 	thread[0] = (HANDLE)_beginthreadex(nullptr, 0, &AcceptThread, &hcp, 0, nullptr);
 	thread[1] = (HANDLE)_beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
-	//thread[2] = (HANDLE) _beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
-	//thread[3] = (HANDLE) _beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
-	//thread[4] = (HANDLE) _beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
+	//thread[2] = (HANDLE)_beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
+	//thread[3] = (HANDLE)_beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
+	//thread[4] = (HANDLE)_beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
 
 
 
 	while (true)
 	{
-		if (GetAsyncKeyState('Q') & 0x8000) 
+		if (GetAsyncKeyState('Q') & 0x8000)
 		{
 
 			g_bShutdown = true;
@@ -101,10 +98,8 @@ int main()
 					//Release(pair.second->_sessionID);
 				}
 			}
-			LeaveCriticalSection(&g_sessionMapCs);
 
-
-			for (int i = 0 ; i < 5; i++)
+			for (int i = 0; i < 5; i++)
 				PostQueuedCompletionStatus(hcp, 0, 0, 0);
 			std::cout << "'q' 키 입력: PQCS 전송 완료" << std::endl;
 			break;
