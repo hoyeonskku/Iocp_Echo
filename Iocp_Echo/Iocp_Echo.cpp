@@ -46,6 +46,12 @@ int main()
 
 	int send_buf_size = 0;
 	setsockopt(listenSocket, SOL_SOCKET, SO_SNDBUF, (const char*)&send_buf_size, sizeof(int));
+	
+	linger linger;
+	linger.l_linger = 0;
+	linger.l_onoff = (USHORT) 1;
+	setsockopt(listenSocket, SOL_SOCKET, SO_LINGER, (const char*)&linger, sizeof(linger));
+
 
 	SOCKADDR_IN myAddress;
 	myAddress.sin_family = AF_INET;
@@ -74,21 +80,30 @@ int main()
 	thread[3] = (HANDLE) _beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
 	thread[4] = (HANDLE) _beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
 
-	for (auto& pair : g_sessionMap)
-	{
-		if (pair.second->_IOCount != 0)
-		{
-			CancelIo((HANDLE)pair.second->_sock);
-		}
-	}
 
 
 	while (true)
 	{
-		if (GetAsyncKeyState('Q') & 0x8000) {
-			// PQCS 구조체 동적 할당
+		if (GetAsyncKeyState('Q') & 0x8000) 
+		{
 
-			// IOCP에 완료 패킷 전송
+			g_bShutdown = true;
+
+			// 리슨소켓 제거하여 새로운 연결 없애기
+			closesocket(listenSocket);
+
+			// 세션 제거는 나중에 생각해봄...
+			for (auto& pair : g_sessionMap)
+			{
+				if (pair.second->_IOCount != 0)
+				{
+					//CancelIoEx((HANDLE)pair.second->_sock, nullptr);
+					//Release(pair.second->_sessionID);
+				}
+			}
+			LeaveCriticalSection(&g_sessionMapCs);
+
+
 			for (int i = 0 ; i < 5; i++)
 				PostQueuedCompletionStatus(hcp, 0, 0, 0);
 			std::cout << "'q' 키 입력: PQCS 전송 완료" << std::endl;
@@ -96,15 +111,11 @@ int main()
 		}
 	}
 
-	g_bShutdown = true;
-	closesocket(listenSocket);
-
+	// 스레드 종료 대기
 	WaitForMultipleObjects(5, thread, true, INFINITE);
 
-	for (auto& pair : g_sessionMap)
-	{
-		delete pair.second;
-	}
+	// iocp 핸들 제거
+	CloseHandle(hcp);
 
 	// 윈속 종료
 	WSACleanup();

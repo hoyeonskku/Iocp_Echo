@@ -9,7 +9,7 @@ class Session
 {
 public:
 	Session(SOCKET sock, SOCKADDR_IN addr, UINT64 sessionID)
-		: _sock(sock), _addr(addr), _recvBuf(10), _sendBuf(10), _sessionID(sessionID)
+		: _sock(sock), _addr(addr), _recvBuf(10000), _sendBuf(10000), _sessionID(sessionID)
 	{
 		InitializeCriticalSection(&_cs);
 	}
