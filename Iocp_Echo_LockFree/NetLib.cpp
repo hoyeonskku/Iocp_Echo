@@ -78,15 +78,16 @@ unsigned int WINAPI NetworkThread(void* arg)
 		else if (&pSession->_sendOvl == ovl)
 		{
 			pSession->_sendBuf.MoveFront(cbTransferred);
-			pSession->_sendFlag = false;
+			InterlockedExchange(&pSession->_sendFlag, 0);
 			if (pSession->_sendBuf.GetUseSize() > 0)
 				SendPost(pSession);
-			else
-				InterlockedExchange(&pSession->_sendFlag, 0);
 		}
 
 		if (InterlockedDecrement(&pSession->_IOCount) == 0)
+		{
+			//int err = WSAGetLastError();
 			Release(pSession->_sessionID);
+		}
 		
 	}
 	return 0;
@@ -153,6 +154,7 @@ void SendPost(Session* pSession)
 				else
 					DebugBreak();
 
+				InterlockedExchange(&pSession->_sendFlag, 0);
 				InterlockedDecrement(&pSession->_IOCount);
 
 				return;

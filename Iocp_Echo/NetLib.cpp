@@ -92,12 +92,10 @@ unsigned int WINAPI NetworkThread(void* arg)
 		else if (&pSession->_sendOvl == ovl)
 		{
 			pSession->_sendBuf.MoveFront(cbTransferred);
-			pSession->_sendFlag = false;
+			InterlockedExchange(&pSession->_sendFlag, 0);
 			// 상대방이 send를 하기 전에 먼저 큐에 넣은 후(1번조건), 그 다음에 send를 완료하면 빈 상태에서 send하게 된다. 그래서 다시 한번 소유권 얻은 후 사이즈 체크(3번조건)
 			if (pSession->_sendBuf.GetUseSize() > 0)
 				SendPost(pSession);
-			else
-				InterlockedExchange(&pSession->_sendFlag, 0);
 		}
 
 		if (InterlockedDecrement(&pSession->_IOCount) == 0)
@@ -178,6 +176,7 @@ void SendPost(Session* pSession)
 			{
 				DebugBreak();
 			}
+			InterlockedExchange(&pSession->_sendFlag, 0);
 			InterlockedDecrement(&pSession->_IOCount);
 			
 			return;
