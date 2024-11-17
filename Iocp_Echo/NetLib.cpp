@@ -1,4 +1,3 @@
-#define _WINSOCK_DEPRECATED_NO_WARNINGS // 최신 VC++ 컴파일 시 경고 방지
 #include "NetLib.h"
 #pragma comment(lib, "ws2_32")
 #include <Windows.h>
@@ -39,8 +38,6 @@ unsigned int WINAPI AcceptThread(void* arg)
 				DebugBreak();
 			break;
 		}
-		/*printf("[TCP 서버] 클라이언트 접속: IP 주소=%s, 포트 번호=%d\n",
-			inet_ntoa(clientaddr.sin_addr), ntohs(clientaddr.sin_port));*/
 
 		Session* pSession = new Session(client_sock, clientaddr, sessionIDCount++);
 
@@ -80,24 +77,20 @@ unsigned int WINAPI NetworkThread(void* arg)
 
 		if (cbTransferred == 0)
 		{
-
+			int i = 0;
 		}
 		else if (&pSession->_recvOvl == ovl)
 		{
-			ProcessRecvMessage(pSession, cbTransferred);
-			// 컨텐츠 로직
-			
 
+			ProcessRecvMessage(pSession, cbTransferred);
 		}
+		
 		else if (&pSession->_sendOvl == ovl)
 		{
 			pSession->_sendBuf.MoveFront(cbTransferred);
 			InterlockedExchange(&pSession->_sendFlag, 0);
-			// 상대방이 send를 하기 전에 먼저 큐에 넣은 후(1번조건), 그 다음에 send를 완료하면 빈 상태에서 send하게 된다. 그래서 다시 한번 소유권 얻은 후 사이즈 체크(3번조건)
-			if (pSession->_sendBuf.GetUseSize() > 0)
-				SendPost(pSession);
+			SendPost(pSession);
 		}
-
 		if (InterlockedDecrement(&pSession->_IOCount) == 0)
 		{
 			Release(pSession->_sessionID);
@@ -109,8 +102,6 @@ unsigned int WINAPI NetworkThread(void* arg)
 	return 0;
 }
 
-
-
 void RecvPost(Session* pSession)
 {
 	WSABUF wsabufs[2];
@@ -119,9 +110,11 @@ void RecvPost(Session* pSession)
 
 	DWORD flags = 0;
 	ZeroMemory(&pSession->_recvOvl, sizeof(pSession->_recvOvl));
-	InterlockedIncrement(&pSession->_IOCount);
-	DWORD wsaSendRetval = WSARecv(pSession->_sock, wsabufs, 2, NULL, &flags, &pSession->_recvOvl, NULL);
-	if (wsaSendRetval == SOCKET_ERROR)
+	int ioCount = InterlockedIncrement(&pSession->_IOCount);
+	
+	DWORD recvedBytes;
+	DWORD wsaRecvRetval = WSARecv(pSession->_sock, wsabufs, 2, &recvedBytes, &flags, &pSession->_recvOvl, NULL);
+	if (wsaRecvRetval == SOCKET_ERROR)
 	{
 		int err = WSAGetLastError();
 		if (err != ERROR_IO_PENDING)
@@ -149,8 +142,8 @@ void SendPost(Session* pSession)
 	if (InterlockedExchange(&pSession->_sendFlag, 1) == 1)
 		return;
 
-	if (pSession->_sendBuf.GetUseSize() == 0)
-		__debugbreak();
+	/*if (pSession->_sendBuf.GetUseSize() == 0)
+		__debugbreak();*/
 	WSABUF wsabufs[2];
 	
 	pSession->_sendBuf.SetSendWsabufs(wsabufs);
@@ -187,60 +180,46 @@ void SendPost(Session* pSession)
 void ProcessRecvMessage(Session* pSession, int cbTransferred)
 {
 	pSession->_recvBuf.MoveRear(cbTransferred);
-	while (true)
+	while (pSession->_recvBuf.GetUseSize() >= sizeof(stHeader))
 	{
 		// 헤더만큼 읽을 수 있으면
-		if (pSession->_recvBuf.GetUseSize() >= sizeof(stHeader))
-		{
-			short num;
-			int ret = pSession->_recvBuf.Peek((char*)&num, sizeof(short));
-			short size = static_cast<short>(num);
-			if (pSession->_recvBuf.GetUseSize() < size + sizeof(short))
-				return;
-			pSession->_recvBuf.MoveFront(sizeof(short));
-
-			CPacket packetData;
-			packetData << size;
-
-			char* writePos = packetData.GetBufferPtr() + sizeof(short);
-			// 사이즈보다 경계까지의 값이 작다면
-			if (pSession->_recvBuf.DirectDequeueSize() < size)
-			{
-				int freeSize = pSession->_recvBuf.DirectDequeueSize();
-				int remainLength = size - freeSize;
-				memcpy(writePos, pSession->_recvBuf.GetFrontBufferPtr(), freeSize);
-				pSession->_recvBuf.MoveFront(freeSize);
-
-				memcpy(writePos + freeSize, pSession->_recvBuf.GetFrontBufferPtr(), remainLength);
-				pSession->_recvBuf.MoveFront(remainLength);
-			}
-			// 충분히 읽을 수 있으면
-			else
-			{
-				memcpy(writePos, pSession->_recvBuf.GetFrontBufferPtr(), size);
-				pSession->_recvBuf.MoveFront(size);
-			}
-			packetData.MoveWritePos(size);
-			OnRecv(pSession->_sessionID, &packetData);
-		}
-		else
+		short num;
+		int ret = pSession->_recvBuf.Peek((char*)&num, sizeof(short));
+		short size = static_cast<short>(num);
+		if (pSession->_recvBuf.GetUseSize() < size + sizeof(short))
 			break;
+		pSession->_recvBuf.MoveFront(sizeof(short));
+
+		CPacket packetData;
+		packetData << size;
+
+		char* writePos = packetData.GetBufferPtr() + sizeof(short);
+		// 사이즈보다 경계까지의 값이 작다면
+		if (pSession->_recvBuf.DirectDequeueSize() < size)
+		{
+			int freeSize = pSession->_recvBuf.DirectDequeueSize();
+			int remainLength = size - freeSize;
+			memcpy(writePos, pSession->_recvBuf.GetFrontBufferPtr(), freeSize);
+			pSession->_recvBuf.MoveFront(freeSize);
+
+			memcpy(writePos + freeSize, pSession->_recvBuf.GetFrontBufferPtr(), remainLength);
+			pSession->_recvBuf.MoveFront(remainLength);
+		}
+		// 충분히 읽을 수 있으면
+		else
+		{
+			memcpy(writePos, pSession->_recvBuf.GetFrontBufferPtr(), size);
+			pSession->_recvBuf.MoveFront(size);
+		}
+		packetData.MoveWritePos(size);
+		OnRecv(pSession->_sessionID, &packetData);
 	}
 
 	RecvPost(pSession);
 }
+
 void OnRecv(UINT64 sessionID, CPacket* packet)
 {
-	//char ip[INET_ADDRSTRLEN]; // IPv4 주소를 저장할 버퍼
-	// 안전하게 IP 주소 변환 (inet_ntop 사용)
-	/*if (inet_ntop(AF_INET, &(pSession->_addr.sin_addr), ip, sizeof(ip)) == nullptr) {
-		std::cerr << "Failed to convert IP address" << std::endl;
-		return;
-	}
-	printf("[TCP/%s:%d] %.*s\n",
-		ip,
-		ntohs(pSession->_addr.sin_port),
-		packet->GetDataSize(), packet);*/
 	auto it = g_sessionMap.find(sessionID);
 	if (it != g_sessionMap.end())
 	{
@@ -261,8 +240,6 @@ bool Release(UINT64 sessionID)
 		// 샌드패킷에서 세션락을 풀어주는 상태에서 세션락을 해제하면 아래 코드 실행 가능해짐, 그 이후 세션맵 락을 잡고있는 상태이기 때문에 샌드패킷하는 스레드가 없다는 것을 확신할 수 있음.
 		EnterCriticalSection(&it->second->_cs);
 		LeaveCriticalSection(&it->second->_cs);
-		/*printf("[TCP 서버] 클라이언트 종료: IP 주소=%s, 포트 번호=%d\n",
-			inet_ntoa(it->second->_addr.sin_addr), ntohs(it->second->_addr.sin_port));*/
 		closesocket(it->second->_sock);
 		delete it->second;
 		g_sessionMap.erase(it);
@@ -285,9 +262,13 @@ void SendPacket(UINT64 sessionID, CPacket* packet)
 	UINT64 data;
 	*packet >> data;
 
-	it->second->_sendBuf.Enqueue((const char*)&size, sizeof(short));
-	it->second->_sendBuf.Enqueue((const char*)&data, size);
+	int retval1 = it->second->_sendBuf.Enqueue((const char*)&size, sizeof(short));
+	int retval2 = it->second->_sendBuf.Enqueue((const char*)&data, size);
 
+	int retval3 = retval1 + retval2;
+
+	if (!retval3)
+		DebugBreak();
 	SendPost(it->second);
 	LeaveCriticalSection(&it->second->_cs);
 }

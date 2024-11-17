@@ -3,20 +3,6 @@
 #include <iostream>
 #include <assert.h>
 
-class DebugLog
-{
-public:
-	int _prevFront;
-	int _prevRear;
-	int _currentFront;
-	int _currentRear;
-	int _moveFrontValue;
-	int _moveRearValue;
-};
-
-
-
-
 class CRingBuffer
 {
 public:
@@ -64,7 +50,6 @@ public:
 	/////////////////////////////////////////////////////////////////////////
 	inline int GetUseSize(void)
 	{
-		Sleep(0);
 		int front = _front;
 		int rear = _rear;
 		if (front <= rear)
@@ -118,9 +103,6 @@ public:
 			return 0; // 데이터 추가를 방지
 		}
 #endif
-		/*DebugLog debugLog;
-		debugLog._prevFront = _front;
-		debugLog._prevRear = _rear;*/
 
 		int freeSize = GetFreeSize();
 		if (freeSize < iSize)
@@ -139,10 +121,6 @@ public:
 			_rear = (_rear + iSize) % _capacity;
 		}
 
-		/*debugLog._currentFront = _front;
-		debugLog._currentRear = _rear;
-		debugLog._moveRearValue = iSize;
-		_debugLogList.push_back(debugLog);*/
 		return iSize;
 	}
 
@@ -154,9 +132,6 @@ public:
 	/////////////////////////////////////////////////////////////////////////
 	int	Dequeue(char* chpDest, int iSize)
 	{
-		/*DebugLog debugLog;
-		debugLog._prevFront = _front;
-		debugLog._prevRear = _rear;*/
 		int size = GetUseSize();
 		if (size < iSize)
 			iSize = size; // 요청한 크기보다 실제 데이터 크기가 작을 경우
@@ -174,10 +149,6 @@ public:
 			_front = (_front + iSize) % _capacity;
 		}
 
-		/*debugLog._currentFront = _front;
-		debugLog._currentRear = _rear;
-		debugLog._moveFrontValue = iSize;
-		_debugLogList.push_back(debugLog);*/
 
 		return iSize;
 	}
@@ -229,20 +200,24 @@ public:
 	////////////////////////////////////////////////////////////////////////
 	int	DirectEnqueueSize(void)
 	{
-		if (_front > _rear)
-			return _front - _rear - 1;
+		int front = _front;
+		int rear = _rear;
+		if (front > _rear)
+			return front - rear - 1;
 		// 사이즈 검증을 하지 않기 때문에 front0일때의 예외처리가 필요
-		if (_front == 0)
-			return _capacity - _rear - 1;
+		if (front == 0)
+			return _capacity - rear - 1;
 		else
-			return _capacity - _rear;
+			return _capacity - rear;
 	}
 
 	int DirectDequeueSize(void)
 	{
-		if (_front > _rear)
-			return _capacity - _front;
-		return _rear - _front;
+		int front = _front;
+		int rear = _rear;
+		if (front > rear)
+			return _capacity - front;
+		return rear - front;
 	}
 
 	/////////////////////////////////////////////////////////////////////////
@@ -289,6 +264,7 @@ public:
 	/////////////////////////////////////////////////////////////////////////
 	void SetRecvWsabufs(WSABUF* wsabufs)
 	{
+
 		int front = _front;
 		int rear = _rear;
 		int useSize;
@@ -297,13 +273,13 @@ public:
 		else
 			useSize = _capacity - front + rear;
 
-		int freeSize =  _capacity - 1 - useSize;
+		int freeSize = _capacity - 1 - useSize;
 
 		wsabufs[0].buf = _buffer + rear;
 
 		int directEnqueueSize;
 
-		if (_front > _rear)
+		if (front > rear)
 			directEnqueueSize = front - rear - 1;
 		// 사이즈 검증을 하지 않기 때문에 front0일때의 예외처리가 필요
 		else if (_front == 0)
@@ -313,8 +289,8 @@ public:
 
 		wsabufs[0].len = directEnqueueSize;
 
-		wsabufs[1].len = freeSize - wsabufs[0].len;
 		wsabufs[1].buf = _buffer;
+		wsabufs[1].len = freeSize - wsabufs[0].len;
 	}
 
 	/////////////////////////////////////////////////////////////////////////
@@ -332,11 +308,10 @@ public:
 		else
 			useSize = _capacity - front + rear;
 
-
 		wsabufs[0].buf = _buffer + front;
 
 		int directDequeueSize;
-		if (_front > _rear)
+		if (front > rear)
 			directDequeueSize = _capacity - front;
 		else
 		{
@@ -345,15 +320,14 @@ public:
 
 		wsabufs[0].len = directDequeueSize;
 
-		wsabufs[1].len = (useSize - wsabufs[0].len);
 		wsabufs[1].buf = _buffer;
+		wsabufs[1].len = (useSize - wsabufs[0].len);
 	}
 
-private:
+	//private:
+public:
 	char* _buffer;
 	int _rear = 0;
 	int _front = 0;
 	int _capacity;
-
-	//std::list<DebugLog> _debugLogList;
 };
