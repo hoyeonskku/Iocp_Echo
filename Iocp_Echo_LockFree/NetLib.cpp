@@ -17,7 +17,6 @@ unsigned int WINAPI AcceptThread(void* arg)
 	HANDLE hrd = *(HANDLE*)arg;
 	int IoctlsocketRetval;
 
-	InitializeCriticalSection(&g_sessionMapCs);
 	// 데이터 통신에 사용할 변수
 	SOCKET client_sock;
 	SOCKADDR_IN clientaddr;

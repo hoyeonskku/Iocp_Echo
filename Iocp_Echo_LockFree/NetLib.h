@@ -8,8 +8,6 @@
 class Session;
 class CPacket;
 
-extern std::unordered_map<int, Session*> g_sessionMap;
-extern CRITICAL_SECTION g_sessionMapCs;
 unsigned int WINAPI AcceptThread(void* arg);
 unsigned int WINAPI NetworkThread(void* arg);
 

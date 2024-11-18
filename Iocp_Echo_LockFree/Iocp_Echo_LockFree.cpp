@@ -91,15 +91,15 @@ int main()
 			// 리슨소켓 제거하여 새로운 연결 없애기
 			closesocket(listenSocket);
 
-			// 세션 제거는 나중에 생각해봄...
-			for (auto& pair : g_sessionMap)
-			{
-				if (pair.second->_IOCount != 0)
-				{
-					//CancelIoEx((HANDLE)pair.second->_sock, nullptr);
-					//Release(pair.second->_sessionID);
-				}
-			}
+			//// 세션 제거는 나중에 생각해봄...
+			//for (auto& pair : )
+			//{
+			//	if (pair.second->_IOCount != 0)
+			//	{
+			//		//CancelIoEx((HANDLE)pair.second->_sock, nullptr);
+			//		//Release(pair.second->_sessionID);
+			//	}
+			//}
 
 			for (int i = 0; i < 5; i++)
 				PostQueuedCompletionStatus(hcp, 0, 0, 0);
