@@ -25,3 +25,5 @@ void ProcessRecvMessage(Session* pSession, int cbTransferred);
 extern bool g_bShutdown;
 
 extern SOCKET listenSocket;
+
+extern Session g_SessionArray[65535];

@@ -10,8 +10,7 @@
 bool g_bShutdown = true;
 SOCKET listenSocket;
 UINT64 sessionIDCount;
-CRITICAL_SECTION g_sessionMapCs;
-std::unordered_map<int, Session*> g_sessionMap;
+Session g_SessionArray[65535];
 
 unsigned int WINAPI AcceptThread(void* arg)
 {
@@ -39,16 +38,21 @@ unsigned int WINAPI AcceptThread(void* arg)
 			break;
 		}
 
-		Session* pSession = new Session(client_sock, clientaddr, sessionIDCount++);
+		Session* session = nullptr;
 
-		EnterCriticalSection(&g_sessionMapCs);
-		g_sessionMap.insert({ pSession->_sessionID, pSession });
-		LeaveCriticalSection(&g_sessionMapCs);
+		for (int i = 0; i < 65535; i++)
+		{
+			if (g_SessionArray[i]._invalidFlag == -1 && InterlockedExchange(&g_SessionArray[i]._invalidFlag, 1) == -1)
+			{
+				session = &g_SessionArray[i];
+				session->Clear(client_sock, clientaddr, sessionIDCount++, i);
+				break;
+			}
+		}
 
+		CreateIoCompletionPort((HANDLE)client_sock, hrd, (ULONG_PTR)session, 0);
 
-		CreateIoCompletionPort((HANDLE)client_sock, hrd, (ULONG_PTR)pSession, 0);
-
-		RecvPost(pSession);
+		RecvPost(session);
 	}
 	return 0;
 }
@@ -73,10 +77,16 @@ unsigned int WINAPI NetworkThread(void* arg)
 		if (cbTransferred == 0 && pSession == 0 && ovl == 0)
 			return 0;
 
-		if (cbTransferred == 0) {}
+		if (cbTransferred == 0)
+		{
+		}
 
 		else if (&pSession->_recvOvl == ovl)
+		{
 			ProcessRecvMessage(pSession, cbTransferred);
+
+
+		}
 		else if (&pSession->_sendOvl == ovl)
 		{
 			pSession->_sendBuf.MoveFront(cbTransferred);
@@ -84,7 +94,10 @@ unsigned int WINAPI NetworkThread(void* arg)
 
 			if (pSession->_sendBuf.GetBufferSize() > 0)
 				SendPost(pSession);
+
+
 		}
+
 		if (InterlockedDecrement(&pSession->_IOCount) == 0)
 		{
 			Release(pSession->_sessionID);
@@ -100,10 +113,13 @@ void RecvPost(Session* pSession)
 
 	DWORD flags = 0;
 	ZeroMemory(&pSession->_recvOvl, sizeof(pSession->_recvOvl));
-	int ioCount = InterlockedIncrement(&pSession->_IOCount);
 
-	DWORD recvedBytes;
-	DWORD wsaRecvRetval = WSARecv(pSession->_sock, wsabufs, 2, &recvedBytes, &flags, &pSession->_recvOvl, NULL);
+
+	if (wsabufs[0].len + wsabufs[1].len == 0)
+		DebugBreak();
+
+	int ioCount = InterlockedIncrement(&pSession->_IOCount);
+	DWORD wsaRecvRetval = WSARecv(pSession->_sock, wsabufs, 2, NULL, &flags, &pSession->_recvOvl, NULL);
 	if (wsaRecvRetval == SOCKET_ERROR)
 	{
 		int err = WSAGetLastError();
@@ -123,6 +139,7 @@ void SendPost(Session* pSession)
 	if (InterlockedExchange(&pSession->_sendFlag, 1) == 1)
 		return;
 
+	// send 0이 되어서 완료통지가 안옴, 다른쪽이 이미 send 한 경우임.
 	if (pSession->_sendBuf.GetUseSize() == 0)
 	{
 		InterlockedExchange(&pSession->_sendFlag, 0);
@@ -132,9 +149,15 @@ void SendPost(Session* pSession)
 
 	pSession->_sendBuf.SetSendWsabufs(wsabufs);
 
+	if (wsabufs[0].len + wsabufs[1].len == 0)
+		DebugBreak();
+
 	ZeroMemory(&pSession->_sendOvl, sizeof(pSession->_sendOvl));
 	InterlockedIncrement(&pSession->_IOCount);
 	DWORD wsaSendRetval = WSASend(pSession->_sock, wsabufs, 2, NULL, 0, &pSession->_sendOvl, NULL);
+
+	if (wsabufs[0].len + wsabufs[1].len == 0)
+		DebugBreak();
 
 	if (wsaSendRetval == SOCKET_ERROR)
 	{
@@ -144,6 +167,7 @@ void SendPost(Session* pSession)
 			if (err == 10054) {}
 			else if (err == 10053) {}
 			else DebugBreak();
+			InterlockedExchange(&pSession->_sendFlag, 0);
 			InterlockedDecrement(&pSession->_IOCount);
 			return;
 		}
@@ -193,47 +217,27 @@ void ProcessRecvMessage(Session* pSession, int cbTransferred)
 
 void OnRecv(UINT64 sessionID, CPacket* packet)
 {
-	EnterCriticalSection(&g_sessionMapCs);
-	auto it = g_sessionMap.find(sessionID);
-	LeaveCriticalSection(&g_sessionMapCs);
-	if (it != g_sessionMap.end())
-		SendPacket(sessionID, packet);
-	else
-		DebugBreak();
-	
+	SendPacket(sessionID, packet);
 }
 
 bool Release(UINT64 sessionID)
 {
-	EnterCriticalSection(&g_sessionMapCs);
-	auto it = g_sessionMap.find(sessionID);
-	if (it != g_sessionMap.end())
-	{
-		closesocket(it->second->_sock);
-		delete it->second;
-		g_sessionMap.erase(it);
-		LeaveCriticalSection(&g_sessionMapCs);
-		return true;
-	}
-	LeaveCriticalSection(&g_sessionMapCs);
-	return false;
+	USHORT index = static_cast<USHORT>((sessionID >> 48) & 0xFFFF);
+	g_SessionArray[index]._invalidFlag = -1;
+	return true;
 }
 
 void SendPacket(UINT64 sessionID, CPacket* packet)
 {
-	EnterCriticalSection(&g_sessionMapCs);
-	auto it = g_sessionMap.find(sessionID);
-	LeaveCriticalSection(&g_sessionMapCs);
+	USHORT index = static_cast<USHORT>((sessionID >> 48) & 0xFFFF);
 	short size;
 	*packet >> size;
 	UINT64 data;
 	*packet >> data;
 
-	Session* session = it->second;
+	g_SessionArray[index]._sendBuf.Enqueue((const char*)&size, sizeof(short));
+	g_SessionArray[index]._sendBuf.Enqueue((const char*)&data, size);
 
-	session->_sendBuf.Enqueue((const char*)&size, sizeof(short));
-	session->_sendBuf.Enqueue((const char*)&data, size);
-
-	if (session->_sendBuf.GetBufferSize() > 0)
-		SendPost(it->second);
+	if (g_SessionArray[index]._sendBuf.GetBufferSize() > 0)
+		SendPost(&g_SessionArray[index]);
 }
