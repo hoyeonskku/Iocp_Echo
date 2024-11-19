@@ -10,7 +10,7 @@
 bool g_bShutdown = true;
 SOCKET listenSocket;
 UINT64 sessionIDCount;
-Session g_SessionArray[10000];
+Session g_SessionArray[65535];
 
 unsigned int WINAPI AcceptThread(void* arg)
 {
@@ -39,22 +39,17 @@ unsigned int WINAPI AcceptThread(void* arg)
 
 		Session* session = nullptr;
 
-		for (int i = 0; i < 10000; i++)
+		for (int i = 0; i < 65535; i++)
 		{
-			if (/*g_SessionArray[i]._invalidFlag == -1 &&*/ InterlockedExchange(&g_SessionArray[i]._invalidFlag, 1) == -1)
+			if (g_SessionArray[i]._invalidFlag == -1 && InterlockedExchange(&g_SessionArray[i]._invalidFlag, 1) == -1)
 			{
 				session = &g_SessionArray[i];
 				session->Clear(client_sock, clientaddr, sessionIDCount++, i);
 				break;
 			}
-			if (i == 9999)
-				DebugBreak();
 		}
 
 		CreateIoCompletionPort((HANDLE)client_sock, hrd, (ULONG_PTR)session, 0);
-
-		if (session->_sock == INVALID_SOCKET)
-			DebugBreak();
 
 		RecvPost(session);
 	}
@@ -78,9 +73,6 @@ unsigned int WINAPI NetworkThread(void* arg)
 		retval = GetQueuedCompletionStatus(hcp, &cbTransferred,
 			(PULONG_PTR)&pSession, &ovl, INFINITE);
 
-		/*if (pSession->_sock == INVALID_SOCKET)
-			DebugBreak();*/
-
 		if (cbTransferred == 0 && pSession == 0 && ovl == 0)
 			return 0;
 
@@ -91,6 +83,8 @@ unsigned int WINAPI NetworkThread(void* arg)
 		else if (&pSession->_recvOvl == ovl)
 		{
 			ProcessRecvMessage(pSession, cbTransferred);
+
+
 		}
 		else if (&pSession->_sendOvl == ovl)
 		{
@@ -99,6 +93,8 @@ unsigned int WINAPI NetworkThread(void* arg)
 
 			if (pSession->_sendBuf.GetBufferSize() > 0)
 				SendPost(pSession);
+
+
 		}
 
 		if (InterlockedDecrement(&pSession->_IOCount) == 0)
@@ -117,9 +113,11 @@ void RecvPost(Session* pSession)
 	DWORD flags = 0;
 	ZeroMemory(&pSession->_recvOvl, sizeof(pSession->_recvOvl));
 
-	InterlockedIncrement(&pSession->_IOCount);
-	/*if (pSession->_sock == INVALID_SOCKET)
-		DebugBreak();*/
+
+	if (wsabufs[0].len + wsabufs[1].len == 0)
+		DebugBreak();
+
+	int ioCount = InterlockedIncrement(&pSession->_IOCount);
 	DWORD wsaRecvRetval = WSARecv(pSession->_sock, wsabufs, 2, NULL, &flags, &pSession->_recvOvl, NULL);
 	if (wsaRecvRetval == SOCKET_ERROR)
 	{
@@ -128,7 +126,7 @@ void RecvPost(Session* pSession)
 		{
 			if (err == 10054) {}
 			else if (err == 10053) {}
-			//else DebugBreak();
+			else DebugBreak();
 			InterlockedDecrement(&pSession->_IOCount);
 			return;
 		}
@@ -150,11 +148,15 @@ void SendPost(Session* pSession)
 
 	pSession->_sendBuf.SetSendWsabufs(wsabufs);
 
+	if (wsabufs[0].len + wsabufs[1].len == 0)
+		DebugBreak();
+
 	ZeroMemory(&pSession->_sendOvl, sizeof(pSession->_sendOvl));
 	InterlockedIncrement(&pSession->_IOCount);
-	/*if (pSession->_sock == INVALID_SOCKET)
-		DebugBreak();*/
 	DWORD wsaSendRetval = WSASend(pSession->_sock, wsabufs, 2, NULL, 0, &pSession->_sendOvl, NULL);
+
+	if (wsabufs[0].len + wsabufs[1].len == 0)
+		DebugBreak();
 
 	if (wsaSendRetval == SOCKET_ERROR)
 	{
@@ -163,7 +165,7 @@ void SendPost(Session* pSession)
 		{
 			if (err == 10054) {}
 			else if (err == 10053) {}
-			//else DebugBreak();
+			else DebugBreak();
 			InterlockedExchange(&pSession->_sendFlag, 0);
 			InterlockedDecrement(&pSession->_IOCount);
 			return;
@@ -220,9 +222,6 @@ void OnRecv(UINT64 sessionID, CPacket* packet)
 bool Release(UINT64 sessionID)
 {
 	USHORT index = static_cast<USHORT>((sessionID >> 48) & 0xFFFF);
-	Session* session = &g_SessionArray[index];
-	closesocket(g_SessionArray[index]._sock);
-	g_SessionArray[index]._sock = INVALID_SOCKET;
 	g_SessionArray[index]._invalidFlag = -1;
 	return true;
 }

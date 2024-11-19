@@ -83,29 +83,29 @@ int main()
 
 	while (true)
 	{
-		if (GetAsyncKeyState('Q') & 0x8000)
-		{
+		//if (GetAsyncKeyState('Q') & 0x8000)
+		//{
 
-			g_bShutdown = true;
+		//	g_bShutdown = true;
 
-			// 리슨소켓 제거하여 새로운 연결 없애기
-			closesocket(listenSocket);
+		//	// 리슨소켓 제거하여 새로운 연결 없애기
+		//	closesocket(listenSocket);
 
-			//// 세션 제거는 나중에 생각해봄...
-			//for (auto& pair : )
-			//{
-			//	if (pair.second->_IOCount != 0)
-			//	{
-			//		//CancelIoEx((HANDLE)pair.second->_sock, nullptr);
-			//		//Release(pair.second->_sessionID);
-			//	}
-			//}
+		//	//// 세션 제거는 나중에 생각해봄...
+		//	//for (auto& pair : )
+		//	//{
+		//	//	if (pair.second->_IOCount != 0)
+		//	//	{
+		//	//		//CancelIoEx((HANDLE)pair.second->_sock, nullptr);
+		//	//		//Release(pair.second->_sessionID);
+		//	//	}
+		//	//}
 
-			for (int i = 0; i < 5; i++)
-				PostQueuedCompletionStatus(hcp, 0, 0, 0);
-			std::cout << "'q' 키 입력: PQCS 전송 완료" << std::endl;
-			break;
-		}
+		//	for (int i = 0; i < 5; i++)
+		//		PostQueuedCompletionStatus(hcp, 0, 0, 0);
+		//	std::cout << "'q' 키 입력: PQCS 전송 완료" << std::endl;
+		//	break;
+		//}
 	}
 
 	// 스레드 종료 대기

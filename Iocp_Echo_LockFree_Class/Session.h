@@ -8,21 +8,19 @@ using namespace std;
 //
 //enum EventType
 //{
-//	RECV,
-//	RECVCOMPLETE,
-//	RECVFAIL,
-//	RECV0,
-//	SEND,
-//	SENDCOMPLETE,
-//	SENDFAIL,
-//	RELEASE,
-//	CLEAR,
+//RECV,
+//RECVCOMPLETE,
+//RECVFAIL,
+//RECV0,
+//SEND,
+//SENDCOMPLETE,
+//SENDFAIL,
 // };
 //
 //struct SessionLog
 //{
-//	unsigned long long sock;
 //    int ioCount;
+//    int sendFlag;
 //    int eventType;
 //	int line;
 //};
@@ -59,11 +57,11 @@ using namespace std;
 class Session
 {
 public:
-	Session() : _recvBuf(10000), _sendBuf(10000), _invalidFlag(-1), _IOCount(0)
+	Session() : _recvBuf(10000), _sendBuf(10000), _invalidFlag(-1)
 	{
 	}
 	Session(SOCKET sock, SOCKADDR_IN addr, UINT64 sessionID)
-		: _sock(sock), _addr(addr), _recvBuf(10000), _sendBuf(10000), _sessionID(sessionID), _invalidFlag(-1), _IOCount(0)
+		: _sock(sock), _addr(addr), _recvBuf(10000), _sendBuf(10000), _sessionID(sessionID), _invalidFlag(-1)
 	{
 	}
 
@@ -74,10 +72,6 @@ public:
 	void Clear(SOCKET sock, SOCKADDR_IN addr, UINT64 sessionID, USHORT index)
 	{
 		_sock = sock;
-		if (_sock == INVALID_SOCKET)
-			DebugBreak();
-
-
 		_addr = addr;
 		_IOCount = 0;
 		_recvBuf.ClearBuffer();
