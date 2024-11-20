@@ -15,6 +15,9 @@ enum EventType
 	SEND,
 	SENDCOMPLETE,
 	SENDFAIL,
+	SENDFIRSTSIZE0,
+	SENDFLAGNOTAQUIRED,
+	SENDSECONDSIZE0,
 	RELEASE,
 	CLEAR,
  };
@@ -22,8 +25,9 @@ enum EventType
 struct SessionLog
 {
 	unsigned long long sock;
-    int ioCount;
     int eventType;
+	unsigned long threadID;
+    int ioCount;
 	int line;
     int transfered = -1;
 };
@@ -80,7 +84,7 @@ public:
 			DebugBreak();
 
 
-		_queue.enqueue({ _sock, _IOCount, EventType::CLEAR, __LINE__ });
+		_queue.enqueue({ _sock, _IOCount,GetCurrentThreadId(),  EventType::CLEAR, __LINE__ });
 		_addr = addr;
 		//_IOCount = 0;
 		_recvBuf.ClearBuffer();

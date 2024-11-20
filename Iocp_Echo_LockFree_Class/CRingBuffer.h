@@ -94,9 +94,16 @@ public:
 	/////////////////////////////////////////////////////////////////////////
 	int	Enqueue(const char* chpData, int iSize)
 	{
+		int front = _front;
+		int useSize;
+		if (front <= _rear)
+			useSize = _rear - front;
+		else
+			useSize = _capacity - front + _rear;
+		int freeSize = _capacity - 1 - useSize;
 #ifdef _DEBUG
 		// 디버그 모드에서만 링버퍼 오버플로우 검증
-		if (IsFull())
+		if (freeSize == 0)
 		{
 			//_LOG(dfLOG_LEVEL_ERROR, L"RingBuffer Overflow");
 			//DebugBreak();
@@ -104,9 +111,11 @@ public:
 		}
 #endif
 
-		int freeSize = GetFreeSize();
 		if (freeSize < iSize)
+		{
+			DebugBreak();
 			iSize = freeSize; // 남은 공간에 맞게 크기 조정
+		}
 
 		int firstPart = _capacity - _rear;
 		if (firstPart >= iSize)
@@ -134,7 +143,10 @@ public:
 	{
 		int size = GetUseSize();
 		if (size < iSize)
+		{
+			DebugBreak();
 			iSize = size; // 요청한 크기보다 실제 데이터 크기가 작을 경우
+		}
 
 		int firstPart = _capacity - _front;
 		if (firstPart >= iSize)
@@ -262,9 +274,8 @@ public:
 	// WSABUF 링버퍼 send용
 	// 
 	/////////////////////////////////////////////////////////////////////////
-	void SetRecvWsabufs(WSABUF* wsabufs)
+	unsigned int SetRecvWsabufs(WSABUF* wsabufs)
 	{
-
 		int front = _front;
 		int rear = _rear;
 		int useSize;
@@ -291,6 +302,10 @@ public:
 
 		wsabufs[1].buf = _buffer;
 		wsabufs[1].len = freeSize - wsabufs[0].len;
+
+		if (wsabufs[1].len == 0)
+			return 1;
+		return 2;
 	}
 
 	/////////////////////////////////////////////////////////////////////////
@@ -298,7 +313,7 @@ public:
 	// WSABUF 링버퍼 recv용
 	// 
 	/////////////////////////////////////////////////////////////////////////
-	void SetSendWsabufs(WSABUF* wsabufs)
+	unsigned int SetSendWsabufs(WSABUF* wsabufs)
 	{
 		int front = _front;
 		int rear = _rear;
@@ -322,6 +337,10 @@ public:
 
 		wsabufs[1].buf = _buffer;
 		wsabufs[1].len = (useSize - wsabufs[0].len);
+
+		if (wsabufs[1].len == 0)
+			return 1;
+		return 2;
 	}
 
 	//private:

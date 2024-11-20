@@ -86,29 +86,35 @@ unsigned int WINAPI NetworkThread(void* arg)
 
 		if (cbTransferred == 0)
 		{
-			pSession->_queue.enqueue({ pSession->_sock,  pSession->_IOCount, EventType::RECV0, __LINE__ , (int) cbTransferred});
+			pSession->_queue.enqueue({ pSession->_sock, EventType::RECV0,GetCurrentThreadId(), pSession->_IOCount,   __LINE__ , (int) cbTransferred});
 		}
 
 		else if (&pSession->_recvOvl == ovl)
 		{
-			pSession->_queue.enqueue({ pSession->_sock,  pSession->_IOCount, EventType::RECVCOMPLETE, __LINE__ ,(int)cbTransferred });
+			pSession->_queue.enqueue({ pSession->_sock, EventType::RECVCOMPLETE, GetCurrentThreadId(), pSession->_IOCount,  __LINE__ ,(int)cbTransferred });
 			ProcessRecvMessage(pSession, cbTransferred);
 
 		}
 		else if (&pSession->_sendOvl == ovl)
 		{
-			pSession->_queue.enqueue({ pSession->_sock,  pSession->_IOCount, EventType::SENDCOMPLETE, __LINE__ ,(int)cbTransferred });
+			pSession->_queue.enqueue({ pSession->_sock,   EventType::SENDCOMPLETE,GetCurrentThreadId(),pSession->_IOCount,   __LINE__ ,(int)cbTransferred });
 			pSession->_sendBuf.MoveFront(cbTransferred);
 			// 여기서 풀어주는 이유는 사이즈를 보고 보낼 게 없을 때 풀어주게 되면 그 사이에 인큐를 해버리는 스레드가 있을 수 있어서 아무도 send를 하지 않게 됨
 			InterlockedExchange(&pSession->_sendFlag, 0);
 
 			if (pSession->_sendBuf.GetBufferSize() > 0)
+			{
 				SendPost(pSession);
+			}
+			else
+			{
+				pSession->_queue.enqueue({ pSession->_sock,   EventType::SENDFIRSTSIZE0,GetCurrentThreadId(),pSession->_IOCount,   __LINE__ ,(int)cbTransferred });
+			}
 		}
 
 		if (InterlockedDecrement(&pSession->_IOCount) == 0)
 		{
-			pSession->_queue.enqueue({ pSession->_sock, pSession->_IOCount, EventType::RELEASE, __LINE__ ,(int) cbTransferred });
+			pSession->_queue.enqueue({ pSession->_sock,EventType::RELEASE,  GetCurrentThreadId(),pSession->_IOCount,  __LINE__ ,(int) cbTransferred });
 			Release(pSession->_sessionID);
 		}
 	}
@@ -118,7 +124,7 @@ unsigned int WINAPI NetworkThread(void* arg)
 void RecvPost(Session* pSession)
 {
 	WSABUF wsabufs[2];
-	pSession->_recvBuf.SetRecvWsabufs(wsabufs);
+	unsigned int bufsNum = pSession->_recvBuf.SetRecvWsabufs(wsabufs);
 
 	if (wsabufs[0].len + wsabufs[1].len == 0)
 		DebugBreak();
@@ -126,10 +132,10 @@ void RecvPost(Session* pSession)
 	ZeroMemory(&pSession->_recvOvl, sizeof(pSession->_recvOvl));
 
 	InterlockedIncrement(&pSession->_IOCount);
-	pSession->_queue.enqueue({ pSession->_sock, pSession->_IOCount, EventType::RECV, __LINE__ });
+	pSession->_queue.enqueue({ pSession->_sock, EventType::RECV, GetCurrentThreadId(),pSession->_IOCount,  __LINE__ });
 	if (pSession->_sock == INVALID_SOCKET)
 		DebugBreak();
-	DWORD wsaRecvRetval = WSARecv(pSession->_sock, wsabufs, 2, NULL, &flags, &pSession->_recvOvl, NULL);
+	DWORD wsaRecvRetval = WSARecv(pSession->_sock, wsabufs, bufsNum, NULL, &flags, &pSession->_recvOvl, NULL);
 	if (wsaRecvRetval == SOCKET_ERROR)
 	{
 		int err = WSAGetLastError();
@@ -139,7 +145,7 @@ void RecvPost(Session* pSession)
 			else if (err == 10053) {}
 			else DebugBreak();
 			InterlockedDecrement(&pSession->_IOCount);
-				pSession->_queue.enqueue({ pSession->_sock,pSession->_IOCount, EventType::RECVFAIL, __LINE__ });
+				pSession->_queue.enqueue({ pSession->_sock,pSession->_IOCount, GetCurrentThreadId(), EventType::RECVFAIL, __LINE__ });
 			return;
 		}
 	}
@@ -148,18 +154,25 @@ void RecvPost(Session* pSession)
 void SendPost(Session* pSession)
 {
 	if (InterlockedExchange(&pSession->_sendFlag, 1) == 1)
+	{
+		pSession->_queue.enqueue({ pSession->_sock, EventType::SENDFLAGNOTAQUIRED,GetCurrentThreadId(),pSession->_IOCount,  __LINE__ , pSession->_sendFlag });
 		return;
-
+	}
 	// send 0이 되어서 완료통지가 안옴, 다른쪽이 이미 send 한 경우임.
 	// send 완료 통지에서는 이 조건문이 의미가 없음, send 1회 제한 때문에 사이즈를 줄일 수 있는 스레드는 현재 스레드뿐
-	if (pSession->_sendBuf.GetUseSize() == 0)
+	
+	int usedSize = pSession->_sendBuf.GetUseSize();
+
+	if (usedSize == 0)
 	{
+		pSession->_queue.enqueue({ pSession->_sock ,EventType::SENDSECONDSIZE0,GetCurrentThreadId(),usedSize, __LINE__ , pSession->_sendFlag });
 		InterlockedExchange(&pSession->_sendFlag, 0);
+		
 		return;
 	}
 	WSABUF wsabufs[2];
 
-	pSession->_sendBuf.SetSendWsabufs(wsabufs);
+	unsigned int bufsNum = pSession->_sendBuf.SetSendWsabufs(wsabufs);
 
 	if (wsabufs[0].len + wsabufs[1].len == 0)
 		DebugBreak();
@@ -167,10 +180,10 @@ void SendPost(Session* pSession)
 
 	ZeroMemory(&pSession->_sendOvl, sizeof(pSession->_sendOvl));
 	InterlockedIncrement(&pSession->_IOCount);
-	pSession->_queue.enqueue({ pSession->_sock,pSession->_IOCount, EventType::SEND, __LINE__ ,(int)(wsabufs[0].len + wsabufs[1].len) });
+	pSession->_queue.enqueue({ pSession->_sock, EventType::SEND,GetCurrentThreadId(),pSession->_IOCount,  __LINE__ ,(int)(wsabufs[0].len + wsabufs[1].len) });
 	if (pSession->_sock == INVALID_SOCKET)
 		DebugBreak();
-	DWORD wsaSendRetval = WSASend(pSession->_sock, wsabufs, 2, NULL, 0, &pSession->_sendOvl, NULL);
+	DWORD wsaSendRetval = WSASend(pSession->_sock, wsabufs, bufsNum, NULL, 0, &pSession->_sendOvl, NULL);
 
 	if (wsaSendRetval == SOCKET_ERROR)
 	{
@@ -182,7 +195,7 @@ void SendPost(Session* pSession)
 			else DebugBreak();
 			InterlockedExchange(&pSession->_sendFlag, 0);
 			InterlockedDecrement(&pSession->_IOCount);
-			pSession->_queue.enqueue({ pSession->_sock, pSession->_IOCount, EventType::SENDFAIL, __LINE__, (int)(wsabufs[0].len + wsabufs[1].len) });
+			pSession->_queue.enqueue({ pSession->_sock,   EventType::SENDFAIL,GetCurrentThreadId(), pSession->_IOCount,__LINE__, (int)(wsabufs[0].len + wsabufs[1].len) });
 			return;
 		}
 	}
@@ -254,9 +267,18 @@ void SendPacket(UINT64 sessionID, CPacket* packet)
 	*packet >> size;
 	UINT64 data;
 	*packet >> data;
-
-	g_SessionArray[index]._sendBuf.Enqueue((const char*)&size, sizeof(short));
-	g_SessionArray[index]._sendBuf.Enqueue((const char*)&data, size);
-	if (g_SessionArray[index]._sendBuf.GetBufferSize() > 0)
-		SendPost(&g_SessionArray[index]);
+	Session* pSession = &g_SessionArray[index];
+	pSession->_sendBuf.Enqueue((const char*)&size, sizeof(short));
+	pSession->_sendBuf.Enqueue((const char*)&data, size);
+	int useSize = pSession->_sendBuf.GetUseSize();
+	/*if (g_SessionArray[index]._sendBuf.GetBufferSize() > 0)
+		SendPost(&g_SessionArray[index]);*/
+	if (useSize > 0)
+	{
+		SendPost(pSession);
+	}
+	else
+	{
+		pSession->_queue.enqueue({ pSession->_sock,EventType::SENDFIRSTSIZE0, GetCurrentThreadId(), pSession->_IOCount,  __LINE__ });
+	}
 }
