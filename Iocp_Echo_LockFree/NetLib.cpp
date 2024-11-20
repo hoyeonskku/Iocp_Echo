@@ -158,14 +158,10 @@ void SendPost(Session* pSession)
 		pSession->_queue.enqueue({ pSession->_sock, EventType::SENDFLAGNOTAQUIRED,GetCurrentThreadId(),pSession->_IOCount,  __LINE__ , pSession->_sendFlag });
 		return;
 	}
-	// send 0이 되어서 완료통지가 안옴, 다른쪽이 이미 send 한 경우임.
-	// send 완료 통지에서는 이 조건문이 의미가 없음, send 1회 제한 때문에 사이즈를 줄일 수 있는 스레드는 현재 스레드뿐
-	
-	int usedSize = pSession->_sendBuf.GetUseSize();
 
-	if (usedSize == 0)
+	if (pSession->_sendBuf.GetUseSize() == 0)
 	{
-		pSession->_queue.enqueue({ pSession->_sock ,EventType::SENDSECONDSIZE0,GetCurrentThreadId(),usedSize, __LINE__ , pSession->_sendFlag });
+		pSession->_queue.enqueue({ pSession->_sock ,EventType::SENDSECONDSIZE0,GetCurrentThreadId(),0, __LINE__ , pSession->_sendFlag });
 		InterlockedExchange(&pSession->_sendFlag, 0);
 		
 		return;
