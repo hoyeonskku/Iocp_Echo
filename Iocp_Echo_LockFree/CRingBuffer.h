@@ -106,7 +106,10 @@ public:
 
 		int freeSize = GetFreeSize();
 		if (freeSize < iSize)
+		{
+			DebugBreak();
 			iSize = freeSize; // 남은 공간에 맞게 크기 조정
+		}
 
 		int firstPart = _capacity - _rear;
 		if (firstPart >= iSize)
@@ -134,7 +137,10 @@ public:
 	{
 		int size = GetUseSize();
 		if (size < iSize)
+		{
+			DebugBreak();
 			iSize = size; // 요청한 크기보다 실제 데이터 크기가 작을 경우
+		}
 
 		int firstPart = _capacity - _front;
 		if (firstPart >= iSize)
