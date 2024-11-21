@@ -71,7 +71,10 @@ unsigned int WINAPI NetworkThread(void* arg)
 			(PULONG_PTR)&pSession, &ovl, INFINITE);
 		EnterCriticalSection(&pSession->_cs);
 		if (cbTransferred == 0 && pSession == 0 && ovl == 0)
+		{
+			LeaveCriticalSection(&pSession->_cs);
 			return 0;
+		}
 
 		if (cbTransferred == 0) {}
 

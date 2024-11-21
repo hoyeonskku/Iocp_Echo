@@ -14,7 +14,9 @@ unsigned int WINAPI NetworkThread(void* arg);
 void RecvPost(Session* pSession);
 void SendPost(Session* pSession);
 
+void OnAccept(UINT64 sessionID);
 void OnRecv(UINT64 sessionID, CPacket* packet);
+
 bool Release(UINT64 sessionID);
 void SendPacket(UINT64 sessionID, CPacket* packet);
 

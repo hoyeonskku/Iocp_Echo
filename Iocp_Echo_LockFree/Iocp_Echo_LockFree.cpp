@@ -9,7 +9,7 @@
 
 int main()
 {
-	HANDLE thread[5];
+	HANDLE thread[30];
 	// 입출력 완료 포트 생성
 	int WSAStartUpRetval;
 
@@ -78,6 +78,10 @@ int main()
 	thread[2] = (HANDLE)_beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
 	thread[3] = (HANDLE)_beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
 	thread[4] = (HANDLE)_beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
+	thread[5] = (HANDLE)_beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
+	thread[6] = (HANDLE)_beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
+	thread[7] = (HANDLE)_beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
+	thread[8] = (HANDLE)_beginthreadex(nullptr, 0, &NetworkThread, &hcp, 0, nullptr);
 
 
 
@@ -109,7 +113,7 @@ int main()
 	}
 
 	// 스레드 종료 대기
-	WaitForMultipleObjects(5, thread, true, INFINITE);
+	WaitForMultipleObjects(9, thread, true, INFINITE);
 
 	// iocp 핸들 제거
 	CloseHandle(hcp);

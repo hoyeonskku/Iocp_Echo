@@ -5,68 +5,71 @@
 #include "CRingBuffer.h"
 using namespace std;
 
-
-enum EventType
-{
-	RECV,
-	RECVCOMPLETE,
-	RECVFAIL,
-	RECV0,
-	SEND,
-	SENDCOMPLETE,
-	SENDFAIL,
-	SENDFIRSTSIZE0,
-	SENDFLAGNOTAQUIRED,
-	SENDSECONDSIZE0,
-	RELEASE,
-	CLEAR,
- };
-
-struct SessionLog
-{
-	unsigned long long sock;
-    int eventType;
-	unsigned long threadID;
-    int ioCount;
-	int line;
-    int transfered = -1;
-};
-
-class SessionLogQueue
-{
-private:
-    SessionLog queue[100];
-    volatile long rear;
-    int capacity;
-    int size;
-
-public:
-    // 생성자: 큐의 크기를 설정하고 초기화
-    SessionLogQueue(int capacity = 100)
-        : capacity(capacity), rear(0), size(0)
-    {
-    }
-
-    // 소멸자: 큐 메모리 해제
-    ~SessionLogQueue()
-    {
-        delete[] queue;
-    }
-
-    // 큐에 로그 추가
-    void enqueue(const SessionLog& log)
-    {
-		int index = InterlockedExchange(&rear, (rear + 1) % capacity);
-        queue[index] = log;
-    }
-};
+//
+//enum EventType
+//{
+//	ACCEPT,
+//	ACCEPTSEND,
+//	ACCEPTSENDFAIL,
+//	ACCEPTRECVFAIL,
+//	RECV,
+//	RECVCOMPLETE,
+//	RECVFAIL,
+//	RECV0,
+//	SEND,
+//	SENDCOMPLETE,
+//	SENDFAIL,
+//	SENDFIRSTSIZE0,
+//	SENDFLAGNOTAQUIRED,
+//	SENDSECONDSIZE0,
+//	RELEASE,
+//	CLEAR,
+// };
+//
+//struct SessionLog
+//{
+//	unsigned long long sock;
+//    int eventType;
+//	unsigned long threadID;
+//    int ioCount;
+//	int line;
+//    int transfered = -1;
+//};
+//
+//class SessionLogQueue
+//{
+//private:
+//    SessionLog queue[100];
+//    volatile long rear;
+//    int capacity;
+//    int size;
+//
+//public:
+//    // 생성자: 큐의 크기를 설정하고 초기화
+//    SessionLogQueue(int capacity = 100)
+//        : capacity(capacity), rear(0), size(0)
+//    {
+//    }
+//
+//    // 소멸자: 큐 메모리 해제
+//    ~SessionLogQueue()
+//    {
+//        delete[] queue;
+//    }
+//
+//    // 큐에 로그 추가
+//    void enqueue(const SessionLog& log)
+//    {
+//		int index = InterlockedExchange(&rear, (rear + 1) % capacity);
+//        queue[index] = log;
+//    }
+//};
 
 class Session
 {
 public:
 	Session() : _recvBuf(2048), _sendBuf(2048), _invalidFlag(-1)
 	{
-		InitializeCriticalSection(&cs);
 	}
 	Session(SOCKET sock, SOCKADDR_IN addr, UINT64 sessionID)
 		: _sock(sock), _addr(addr), _recvBuf(2048), _sendBuf(2048), _sessionID(sessionID), _invalidFlag(-1)
@@ -82,9 +85,6 @@ public:
 		_sock = sock;
 		if (_sock == INVALID_SOCKET)
 			DebugBreak();
-
-
-		_queue.enqueue({ _sock, _IOCount,GetCurrentThreadId(),  EventType::CLEAR, __LINE__ });
 		_addr = addr;
 		//_IOCount = 0;
 		_recvBuf.ClearBuffer();
@@ -105,13 +105,11 @@ public:
 	WSAOVERLAPPED  _recvOvl;
 	WSAOVERLAPPED  _sendOvl;
 
-	long _IOCount = 0;
+	unsigned long _IOCount = 0;
 	long _sendFlag = false;
 	long _invalidFlag = false;
 	UINT64 _sessionID;
-	SessionLogQueue _queue;
 
 	long _recvBytes = 0;
 	long _sendReservedBytes = 0;
-	CRITICAL_SECTION cs;
 };
