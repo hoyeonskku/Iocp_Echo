@@ -143,8 +143,7 @@ bool  CLanServer::SendPacket(unsigned long long sessionID, CPacket* pPacket)
 	_sessionArray[index]._sendBuf.Enqueue((const char*)&size, sizeof(short));
 	_sessionArray[index]._sendBuf.Enqueue((const char*)&data, size);
 
-	if (_sessionArray[index]._sendBuf.GetBufferSize() > 0)
-		SendPost(&_sessionArray[index]);
+	SendPost(&_sessionArray[index]);
 
 	return true;
 }
@@ -197,25 +196,14 @@ unsigned int __stdcall CLanServer::AcceptThread(void* arg)
 		// accept 또한 하나의 io 일감으로 처리해야 리시브가 안 걸린 순간에 삭제를 막을 수 있음.
 		InterlockedIncrement(&pSession->_IOCount);
 
-		unsigned int ioCount = server->OnAccept(pSession->_sessionID);
-		if (ioCount == 0)
-		{
-			if (pSession->_invalidFlag == -1)
-				DebugBreak();
+		server->OnAccept(pSession->_sessionID);
+		server->RecvPost(pSession);
+
+		// accept에서 실패했다면 여기서 삭제해줘야 함.
+		if (InterlockedDecrement(&pSession->_IOCount) == 0)
 			server->Release(pSession->_sessionID);
-			return 0;
-		}
-		ioCount = server->RecvPost(pSession);
-		if (ioCount == 0)
-		{
-			if (pSession->_invalidFlag == -1)
-				DebugBreak();
-			server->Release(pSession->_sessionID);
-			return 0;
-		}
-		InterlockedDecrement(&pSession->_IOCount);
-		return 0;
 	}
+	return true;
 }
 
 unsigned int __stdcall CLanServer::NetworkThread(void* arg)
@@ -257,8 +245,7 @@ unsigned int __stdcall CLanServer::NetworkThread(void* arg)
 			pSession->_sendBuf.MoveFront(cbTransferred);
 			InterlockedExchange(&pSession->_sendFlag, 0);
 
-			if (pSession->_sendBuf.GetBufferSize() > 0)
-				server->SendPost(pSession);
+			server->SendPost(pSession);
 		}
 
 		if (InterlockedDecrement(&pSession->_IOCount) == 0)
@@ -402,9 +389,10 @@ bool CLanServer::SendPost(Session* pSession)
 			InterlockedExchange(&pSession->_sendFlag, 0);
 			InterlockedDecrement(&pSession->_IOCount);
 			//pSession->_queue.enqueue({ pSession->_sock, pSession->_IOCount, EventType::SENDFAIL, __LINE__ });
-			return;
+			return false;
 		}
 	}
+	return true;
 }
 
 bool CLanServer::Release(unsigned long long sessionID)

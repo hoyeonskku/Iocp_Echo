@@ -21,8 +21,7 @@ void CGameLenServer::OnRelease(unsigned long long sessionID)
 
 bool CGameLenServer::OnRecv(unsigned long long sessionID, CPacket* pPacket)
 {
-
-	SendPacket(sessionID, pPacket);
+	return SendPacket(sessionID, pPacket);
 }
 
 void CGameLenServer::OnError(int errorcode, WCHAR*)
