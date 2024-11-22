@@ -5,7 +5,7 @@ int main()
 {
 	CGameLenServer gameServer;
 
-	gameServer.Start(nullptr, 6000, 5, true, 10000);
+	gameServer.Start(nullptr, 6000, 1, true, 10000);
 
 	while (true) {}
 

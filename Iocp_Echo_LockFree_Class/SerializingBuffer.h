@@ -18,7 +18,9 @@ public:
 	// 생성자, 파괴자.
 	CPacket() : _capacity(eBUFFER_DEFAULT) {}
 
-	~CPacket() {	}
+	~CPacket() {
+
+	}
 
 	// 패킷 청소.
 	void Clear(void)
@@ -320,11 +322,25 @@ public:
 		return iSrcSize;
 	}
 
+	int AddRef()
+	{
+		return InterlockedIncrement(&_refCount);
+	}
+	int Release()
+	{
+		int refCount = InterlockedDecrement(&_refCount);
+		if (refCount == 0)
+			delete this;
+
+		return refCount;
+	}
+
 protected:
 	char _buffer[eBUFFER_DEFAULT];
-	int _rear = 0;
-	int _front = 0;
-	int _capacity;
+	unsigned int _rear = 0;
+	unsigned int _front = 0;
+	unsigned int _capacity;
+	unsigned int _refCount = 0;
 };
 
 #endif

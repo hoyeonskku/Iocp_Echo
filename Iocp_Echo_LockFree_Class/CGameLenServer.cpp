@@ -9,10 +9,10 @@ bool CGameLenServer::OnConnectionRequest(const wchar_t* IP, short Port)
 
 bool CGameLenServer::OnAccept(unsigned long long sessionID)
 {
-	CPacket packet;
-	packet << (short)8;
-	packet << 0x7fffffffffffffff;
-	return SendPacket(sessionID, &packet);
+	CPacket* packet = new CPacket();
+	*packet << (short)8;
+	*packet << 0x7fffffffffffffff;
+	return SendPacket(sessionID, packet);
 }
 
 void CGameLenServer::OnRelease(unsigned long long sessionID)

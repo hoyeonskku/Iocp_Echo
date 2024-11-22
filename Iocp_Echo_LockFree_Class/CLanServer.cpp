@@ -134,17 +134,12 @@ bool CLanServer::Disconnect(unsigned long long sessionID)
 
 bool  CLanServer::SendPacket(unsigned long long sessionID, CPacket* pPacket)
 {
+	pPacket->AddRef();
 	USHORT index = static_cast<USHORT>((sessionID >> 48) & 0xFFFF);
-	short size;
-	*pPacket >> size;
-	UINT64 data;
-	*pPacket >> data;
-
-	_sessionArray[index]._sendBuf.Enqueue((const char*)&size, sizeof(short));
-	_sessionArray[index]._sendBuf.Enqueue((const char*)&data, size);
+	Session* pSession = &_sessionArray[index];
+	pSession->_sendBuf.Enqueue(&pPacket);
 
 	SendPost(&_sessionArray[index]);
-
 	return true;
 }
 
@@ -179,15 +174,14 @@ unsigned int __stdcall CLanServer::AcceptThread(void* arg)
 		{
 			if (/*g_SessionArray[i]._invalidFlag == -1 &&*/ InterlockedExchange(&server->_sessionArray[i]._invalidFlag, 1) == -1)
 			{
-				pSession = &server->_sessionArray[i];
+				pSession = &server->_sessionArray [i];
 				pSession->Clear(client_sock, clientaddr, server->_sessionIDCount++, i);
 				break;
 			}
 			if (i == 9999)
 				DebugBreak();
 		}
-		server->_acceptCount++;
-		server->_acceptTotal++;
+
 		CreateIoCompletionPort((HANDLE)client_sock, server->_iocpHandle, (ULONG_PTR)pSession, 0);
 
 		if (pSession->_sock == INVALID_SOCKET)
@@ -201,9 +195,11 @@ unsigned int __stdcall CLanServer::AcceptThread(void* arg)
 
 		// accept에서 실패했다면 여기서 삭제해줘야 함.
 		if (InterlockedDecrement(&pSession->_IOCount) == 0)
+		{
 			server->Release(pSession->_sessionID);
+		}
 	}
-	return true;
+	return 0;
 }
 
 unsigned int __stdcall CLanServer::NetworkThread(void* arg)
@@ -215,15 +211,11 @@ unsigned int __stdcall CLanServer::NetworkThread(void* arg)
 	{
 		// 비동기 입출력 완료 기다리기
 		DWORD cbTransferred;
-		SOCKET* client_sock;
-		Session* pSession;
+		Session* pSession = nullptr;
 		WSAOVERLAPPED* ovl;
-		WSABUF wsabuf;
 
 		retval = GetQueuedCompletionStatus(server->_iocpHandle, &cbTransferred,
 			(PULONG_PTR)&pSession, &ovl, INFINITE);
-
-		int a = GetLastError();
 
 		if (pSession->_sock == INVALID_SOCKET)
 			DebugBreak();
@@ -233,18 +225,28 @@ unsigned int __stdcall CLanServer::NetworkThread(void* arg)
 
 		if (cbTransferred == 0)
 		{
-
 		}
 
 		else if (&pSession->_recvOvl == ovl)
 		{
 			server->ProcessRecvMessage(pSession, cbTransferred);
+
 		}
 		else if (&pSession->_sendOvl == ovl)
 		{
-			pSession->_sendBuf.MoveFront(cbTransferred);
-			InterlockedExchange(&pSession->_sendFlag, 0);
+			for (unsigned int i = 0; i < pSession->_sendCount; i++)
+			{
+				if (pSession->_sendBuf.GetUseSize() == 0)
+					DebugBreak();
+				CPacket* packet = nullptr;
+				pSession->_sendBuf.Dequeue(&packet);
+				packet->Release();
+			}
+			InterlockedExchange(&pSession->_sendCount, 0);
+			//pSession->_sendCount = 0;
 
+			// 여기서 풀어주는 이유는 사이즈를 보고 보낼 게 없을 때 풀어주게 되면 그 사이에 인큐를 해버리는 스레드가 있을 수 있어서 아무도 send를 하지 않게 됨
+			InterlockedExchange(&pSession->_sendFlag, 0);
 			server->SendPost(pSession);
 		}
 
@@ -253,7 +255,6 @@ unsigned int __stdcall CLanServer::NetworkThread(void* arg)
 			server->Release(pSession->_sessionID);
 		}
 	}
-	return 0;
 }
 
 void CLanServer::ProcessRecvMessage(Session* pSession, int cbTransferred)
@@ -269,10 +270,10 @@ void CLanServer::ProcessRecvMessage(Session* pSession, int cbTransferred)
 			break;
 		pSession->_recvBuf.MoveFront(sizeof(short));
 
-		CPacket packetData;
-		packetData << size;
+		CPacket* packetData = new CPacket();
+		*packetData << size;
 
-		char* writePos = packetData.GetBufferPtr() + sizeof(short);
+		char* writePos = packetData->GetBufferPtr() + sizeof(short);
 		// 사이즈보다 경계까지의 값이 작다면
 		if (pSession->_recvBuf.DirectDequeueSize() < size)
 		{
@@ -290,29 +291,26 @@ void CLanServer::ProcessRecvMessage(Session* pSession, int cbTransferred)
 			memcpy(writePos, pSession->_recvBuf.GetFrontBufferPtr(), size);
 			pSession->_recvBuf.MoveFront(size);
 		}
-		packetData.MoveWritePos(size);
-		OnRecv(pSession->_sessionID, &packetData);
+		packetData->MoveWritePos(size);
+		OnRecv(pSession->_sessionID, packetData);
 	}
-
 	RecvPost(pSession);
 }
 
 bool CLanServer::RecvPost(Session* pSession)
 {
 	WSABUF wsabufs[2];
-	pSession->_recvBuf.SetRecvWsabufs(wsabufs);
+	unsigned int bufsNum = pSession->_recvBuf.SetRecvWsabufs(wsabufs);
 
+	if (wsabufs[0].len + wsabufs[1].len == 0)
+		DebugBreak();
 	DWORD flags = 0;
 	ZeroMemory(&pSession->_recvOvl, sizeof(pSession->_recvOvl));
 
 	InterlockedIncrement(&pSession->_IOCount);
-	//pSession->_queue.enqueue({ pSession->_sock, pSession->_IOCount, EventType::RECV, __LINE__ });
 	if (pSession->_sock == INVALID_SOCKET)
 		DebugBreak();
-	DWORD wsaRecvRetval = WSARecv(pSession->_sock, wsabufs, 2, NULL, &flags, &pSession->_recvOvl, NULL);	
-	// For monitor
-	_recvMessageCount++;
-	_recvMessageTPS += wsabufs[0].len + wsabufs[1].len;
+	DWORD wsaRecvRetval = WSARecv(pSession->_sock, wsabufs, bufsNum, NULL, &flags, &pSession->_recvOvl, NULL);
 	if (wsaRecvRetval == SOCKET_ERROR)
 	{
 		int err = WSAGetLastError();
@@ -320,9 +318,8 @@ bool CLanServer::RecvPost(Session* pSession)
 		{
 			if (err == 10054) {}
 			else if (err == 10053) {}
-			//else DebugBreak();
+			else DebugBreak();
 			InterlockedDecrement(&pSession->_IOCount);
-			//pSession->_queue.enqueue({ pSession->_sock,pSession->_IOCount, EventType::RECVFAIL, __LINE__ });
 			return false;
 		}
 	}
@@ -337,7 +334,6 @@ bool CLanServer::SendPost(Session* pSession)
 
 	if (InterlockedExchange(&pSession->_sendFlag, 1) == 1)
 		return false;
-	
 
 	// send 미아 되는 버그 해결
 	// 과정은 send가 완료되는 시점에서 첫번째 사이즈 체크통과, 다른 리시브가 send, recv진행, 그 send 완료통지가 왔을 때 샌드플래그를 풀어줌
@@ -366,18 +362,18 @@ bool CLanServer::SendPost(Session* pSession)
 		}
 	}
 
-	WSABUF wsabufs[2];
-	pSession->_sendBuf.SetSendWsabufs(wsabufs);
+	WSABUF wsabufs[2000];
+
+	int bufsNum = pSession->_sendBuf.SetSendWsabufs(wsabufs);
 
 	ZeroMemory(&pSession->_sendOvl, sizeof(pSession->_sendOvl));
 	InterlockedIncrement(&pSession->_IOCount);
-	//pSession->_queue.enqueue({ pSession->_sock,pSession->_IOCount, EventType::SEND, __LINE__ });
 	if (pSession->_sock == INVALID_SOCKET)
 		DebugBreak();
-	DWORD wsaSendRetval = WSASend(pSession->_sock, wsabufs, 2, NULL, 0, &pSession->_sendOvl, NULL);
-	// For monitor
-	_sendMessageCount++;
-	_sendMessageTPS += wsabufs[0].len + wsabufs[1].len;
+
+	InterlockedAdd(&pSession->_sendCount, bufsNum);
+	DWORD wsaSendRetval = WSASend(pSession->_sock, wsabufs, bufsNum, NULL, 0, &pSession->_sendOvl, NULL);
+
 	if (wsaSendRetval == SOCKET_ERROR)
 	{
 		int err = WSAGetLastError();
@@ -388,7 +384,6 @@ bool CLanServer::SendPost(Session* pSession)
 			else DebugBreak();
 			InterlockedExchange(&pSession->_sendFlag, 0);
 			InterlockedDecrement(&pSession->_IOCount);
-			//pSession->_queue.enqueue({ pSession->_sock, pSession->_IOCount, EventType::SENDFAIL, __LINE__ });
 			return false;
 		}
 	}
@@ -397,11 +392,23 @@ bool CLanServer::SendPost(Session* pSession)
 
 bool CLanServer::Release(unsigned long long sessionID)
 {
+
 	USHORT index = static_cast<USHORT>((sessionID >> 48) & 0xFFFF);
-	Session* session = &_sessionArray[index];
+
+	Session* pSession = &_sessionArray[index];
+
+	for (unsigned int i = 0; i < pSession->_sendCount; i++)
+	{
+		if (pSession->_sendBuf.GetUseSize() == 0)
+			DebugBreak();
+		CPacket* packet = nullptr;
+		pSession->_sendBuf.Dequeue(&packet);
+		packet->Release();
+	}
+
 	_acceptCount--;
 	closesocket(_sessionArray[index]._sock);
 	_sessionArray[index]._sock = INVALID_SOCKET;
-	InterlockedExchange(&_sessionArray[index]._invalidFlag, -1);
+	_sessionArray[index]._invalidFlag = -1;
 	return true;
 }

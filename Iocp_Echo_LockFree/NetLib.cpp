@@ -61,7 +61,9 @@ unsigned int WINAPI AcceptThread(void* arg)
 
 		// accept에서 실패했다면 여기서 삭제해줘야 함.
 		if (InterlockedDecrement(&pSession->_IOCount) == 0)
+		{
 			Release(pSession->_sessionID);
+		}
 	}
 	return 0;
 }
@@ -98,11 +100,20 @@ unsigned int WINAPI NetworkThread(void* arg)
 		}
 		else if (&pSession->_sendOvl == ovl)
 		{
-			pSession->_sendBuf.MoveFront(cbTransferred);
+			for (unsigned int i = 0; i < pSession->_sendCount; i++)
+			{
+				if (pSession->_sendBuf.GetUseSize() == 0)
+					DebugBreak();
+				CPacket* packet = nullptr;
+				pSession->_sendBuf.Dequeue(&packet);
+				packet->Release();
+			}
+			InterlockedExchange(&pSession->_sendCount, 0);
+			//pSession->_sendCount = 0;
+
 			// 여기서 풀어주는 이유는 사이즈를 보고 보낼 게 없을 때 풀어주게 되면 그 사이에 인큐를 해버리는 스레드가 있을 수 있어서 아무도 send를 하지 않게 됨
 			InterlockedExchange(&pSession->_sendFlag, 0);
 			SendPost(pSession);
-			
 		}
 
 		if (InterlockedDecrement(&pSession->_IOCount) == 0)
@@ -183,19 +194,18 @@ void SendPost(Session* pSession)
 		}
 	}
 
-	WSABUF wsabufs[2];
+	WSABUF wsabufs[2000];
 
-	unsigned int bufsNum = pSession->_sendBuf.SetSendWsabufs(wsabufs);
-
-	if (wsabufs[0].len + wsabufs[1].len == 0)
-		DebugBreak();
-
+	int bufsNum = pSession->_sendBuf.SetSendWsabufs(wsabufs);
 
 	ZeroMemory(&pSession->_sendOvl, sizeof(pSession->_sendOvl));
 	InterlockedIncrement(&pSession->_IOCount);
 	if (pSession->_sock == INVALID_SOCKET)
 		DebugBreak();
+
+	InterlockedAdd(&pSession->_sendCount, bufsNum);
 	DWORD wsaSendRetval = WSASend(pSession->_sock, wsabufs, bufsNum, NULL, 0, &pSession->_sendOvl, NULL);
+
 
 	if (wsaSendRetval == SOCKET_ERROR)
 	{
@@ -226,10 +236,10 @@ void ProcessRecvMessage(Session* pSession, int cbTransferred)
 			break;
 		pSession->_recvBuf.MoveFront(sizeof(short));
 
-		CPacket packetData;
-		packetData << size;
+		CPacket* packetData = new CPacket();
+		*packetData << size;
 
-		char* writePos = packetData.GetBufferPtr() + sizeof(short);
+		char* writePos = packetData->GetBufferPtr() + sizeof(short);
 		// 사이즈보다 경계까지의 값이 작다면
 		if (pSession->_recvBuf.DirectDequeueSize() < size)
 		{
@@ -247,22 +257,22 @@ void ProcessRecvMessage(Session* pSession, int cbTransferred)
 			memcpy(writePos, pSession->_recvBuf.GetFrontBufferPtr(), size);
 			pSession->_recvBuf.MoveFront(size);
 		}
-		packetData.MoveWritePos(size);
-		OnRecv(pSession->_sessionID, &packetData);
+		packetData->MoveWritePos(size);
+		OnRecv(pSession->_sessionID, packetData);
 	}
 	RecvPost(pSession);
 }
 
 void OnAccept(UINT64 sessionID)
 {
-	CPacket packet;
-	packet << (short) 8;
-	packet << 0x7fffffffffffffff;
-	return SendPacket(sessionID, &packet);
-
+	CPacket* packet = new CPacket();
+	*packet << (short) 8;
+	*packet << 0x7fffffffffffffff;
+	return SendPacket(sessionID, packet);
 }
 
-void  OnRecv(UINT64 sessionID, CPacket* packet)
+
+void OnRecv(UINT64 sessionID, CPacket* packet)
 {
 	return SendPacket(sessionID, packet);
 }
@@ -271,25 +281,30 @@ bool Release(UINT64 sessionID)
 {
 	USHORT index = static_cast<USHORT>((sessionID >> 48) & 0xFFFF);
 
-	Session* session = &g_SessionArray[index];
+	Session* pSession = &g_SessionArray[index];
+
+	for (unsigned int i = 0; i < pSession->_sendCount; i++)
+	{
+		if (pSession->_sendBuf.GetUseSize() == 0)
+			DebugBreak();
+		CPacket* packet = nullptr;
+		pSession->_sendBuf.Dequeue(&packet);
+		packet->Release();
+	}
 
 	closesocket(g_SessionArray[index]._sock);
 	g_SessionArray[index]._sock = INVALID_SOCKET;
-	//g_SessionArray[index]._invalidFlag = -1;
-	InterlockedExchange(&g_SessionArray[index]._invalidFlag, -1);
+	g_SessionArray[index]._invalidFlag = -1;
 	return true;
 }
 
 void  SendPacket(UINT64 sessionID, CPacket* packet)
 {
+	packet->AddRef();
 	USHORT index = static_cast<USHORT>((sessionID >> 48) & 0xFFFF);
-	short size;
-	*packet >> size;
-	UINT64 data;
-	*packet >> data;
 	Session* pSession = &g_SessionArray[index];
-	pSession->_sendBuf.Enqueue((const char*)&size, sizeof(short));
-	pSession->_sendBuf.Enqueue((const char*)&data, size);
-	int useSize = pSession->_sendBuf.GetUseSize();
-	return SendPost(&g_SessionArray[index]);
+	pSession->_sendBuf.Enqueue(&packet);
+
+	SendPost(&g_SessionArray[index]);
+	return;
 }

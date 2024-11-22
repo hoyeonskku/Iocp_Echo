@@ -2,6 +2,7 @@
 #include <memory.h>
 #include <iostream>
 #include <assert.h>
+#include "SerializingBuffer.h"
 
 class CRingBuffer
 {
@@ -341,6 +342,376 @@ public:
 		if (wsabufs[1].len == 0)
 			return 1;
 		return 2;
+	}
+
+	//private:
+public:
+	char* _buffer;
+	int _rear = 0;
+	int _front = 0;
+	int _capacity;
+};
+
+// 직렬화 버퍼 포인터만 받을 수 있게 특수화
+template <typename T>
+class CRingPtrBuffer;
+
+template <>
+class CRingPtrBuffer<CPacket*>
+{
+public:
+	CRingPtrBuffer(int iBufferSize = 2000)
+	{
+		_capacity = iBufferSize + 1;
+		_buffer = new char[_capacity];
+	}
+	~CRingPtrBuffer(void)
+	{
+		delete[] _buffer;
+	}
+
+	inline int GetBufferSize(void)
+	{
+		return _capacity - 1;
+	};
+	/////////////////////////////////////////////////////////////////////////
+	// 현재 사용중인 용량 얻기.
+	//
+	// Parameters: 없음.
+	// Return: (int)사용중인 용량.
+	/////////////////////////////////////////////////////////////////////////
+	inline int GetUseSize(void)
+	{
+		int front = _front;
+		int rear = _rear;
+		if (front <= rear)
+			return rear - front;
+		else
+			return _capacity - front + rear;
+	};
+
+	///////////////////////////////////////////////////////////////////////
+	// 현재 버퍼에 남은 용량 얻기. 
+	//
+	// Parameters: 없음.
+	// Return: (int)남은용량.
+	/////////////////////////////////////////////////////////////////////////
+	inline int GetFreeSize(void)
+	{
+		int front = _front;
+		int rear = _rear;
+		int useSize;
+		if (front <= rear)
+			useSize = rear - front;
+		else
+			useSize = _capacity - front + rear;
+		return _capacity - 1 - useSize;
+	};
+
+	inline bool IsFull()
+	{
+		return GetFreeSize() == 0;
+	}
+
+	inline char* GetBufferPtr()
+	{
+		return _buffer;
+	}
+
+	/////////////////////////////////////////////////////////////////////////
+	// WritePos 에 데이타 넣음.
+	//
+	// Parameters: (char *)데이타 포인터. (int)크기. 
+	// Return: (int)넣은 크기.
+	/////////////////////////////////////////////////////////////////////////
+	int	Enqueue(CPacket** chpData)
+	{
+		int front = _front;
+		int useSize;
+		if (front <= _rear)
+			useSize = _rear - front;
+		else
+			useSize = _capacity - front + _rear;
+		int freeSize = _capacity - 1 - useSize;
+#ifdef _DEBUG
+		// 디버그 모드에서만 링버퍼 오버플로우 검증
+		if (freeSize == 0)
+		{
+			//_LOG(dfLOG_LEVEL_ERROR, L"RingBuffer Overflow");
+			//DebugBreak();
+			return 0; // 데이터 추가를 방지
+		}
+#endif
+		int iSize = sizeof(void*);
+
+		if (freeSize < iSize)
+		{
+			DebugBreak();
+			iSize = freeSize; // 남은 공간에 맞게 크기 조정
+		}
+
+		int firstPart = _capacity - _rear;
+		if (firstPart >= iSize)
+		{
+			memcpy(_buffer + _rear, chpData, iSize);
+			_rear = (_rear + iSize) % _capacity;
+		}
+		else
+		{
+			memcpy(_buffer + _rear, chpData, firstPart);
+			memcpy(_buffer, (char*) chpData + firstPart, iSize - firstPart);
+			_rear = (_rear + iSize) % _capacity;
+		}
+
+		return iSize;
+	}
+
+	/////////////////////////////////////////////////////////////////////////
+	// ReadPos 에서 데이타 가져옴. ReadPos 이동.
+	//
+	// Parameters: (char *)데이타 포인터. (int)크기.
+	// Return: (int)가져온 크기.
+	/////////////////////////////////////////////////////////////////////////
+	int	Dequeue(CPacket** chpDest)
+	{
+		int iSize = sizeof(void*);
+		int size = GetUseSize();
+		if (size < iSize)
+		{
+			DebugBreak();
+			iSize = size; // 요청한 크기보다 실제 데이터 크기가 작을 경우
+		}
+
+		int firstPart = _capacity - _front;
+		if (firstPart >= iSize)
+		{
+			memcpy(chpDest, _buffer + _front, iSize);
+			_front = (_front + iSize) % _capacity;
+		}
+		else
+		{
+			memcpy(chpDest, _buffer + _front, firstPart);
+			memcpy((char*)chpDest + firstPart, _buffer, iSize - firstPart);
+			_front = (_front + iSize) % _capacity;
+		}
+
+
+		return iSize;
+	}
+
+	/////////////////////////////////////////////////////////////////////////
+	// ReadPos 에서 데이타 읽어옴. ReadPos 고정.
+	//
+	// Parameters: (char *)데이타 포인터. (int)크기.
+	// Return: (int)가져온 크기.
+	/////////////////////////////////////////////////////////////////////////
+	int	Peek(char* chpDest)
+	{
+		int iSize = sizeof(void*);
+		int size = GetUseSize();
+		if (size < iSize)
+			iSize = size; // 요청한 크기보다 실제 데이터 크기가 작을 경우
+
+		int firstPart = _capacity - _front;
+		if (firstPart >= iSize)
+			memcpy(chpDest, _buffer + _front, iSize);
+		else
+		{
+			memcpy(chpDest, _buffer + _front, firstPart);
+			memcpy(chpDest + firstPart, _buffer, iSize - firstPart);
+		}
+		return iSize;
+	}
+	/////////////////////////////////////////////////////////////////////////
+	// 버퍼의 모든 데이타 삭제.
+	//
+	// Parameters: 없음.
+	// Return: 없음.
+	/////////////////////////////////////////////////////////////////////////
+	void ClearBuffer(void)
+	{
+		_front = 0;
+		_rear = 0;
+	};
+
+public:
+	/////////////////////////////////////////////////////////////////////////
+	// 버퍼 포인터로 외부에서 한방에 읽고, 쓸 수 있는 길이.
+	// (끊기지 않은 길이)
+	//
+	// 원형 큐의 구조상 버퍼의 끝단에 있는 데이터는 끝 -> 처음으로 돌아가서
+	// 2번에 데이터를 얻거나 넣을 수 있음. 이 부분에서 끊어지지 않은 길이를 의미
+	//
+	// Parameters: 없음.
+	// Return: (int)사용가능 용량.
+	////////////////////////////////////////////////////////////////////////
+	int	DirectEnqueueSize(void)
+	{
+		int front = _front;
+		int rear = _rear;
+		if (front > _rear)
+			return front - rear - 1;
+		// 사이즈 검증을 하지 않기 때문에 front0일때의 예외처리가 필요
+		if (front == 0)
+			return _capacity - rear - 1;
+		else
+			return _capacity - rear;
+	}
+
+	int DirectDequeueSize(void)
+	{
+		int front = _front;
+		int rear = _rear;
+		if (front > rear)
+			return _capacity - front;
+		return rear - front;
+	}
+
+	/////////////////////////////////////////////////////////////////////////
+	// 원하는 길이만큼 읽기위치 에서 삭제 / 쓰기 위치 이동
+	//
+	// Parameters: 없음.
+	// Return: (int)이동크기
+	/////////////////////////////////////////////////////////////////////////
+	int	MoveRear(int iSize)
+	{
+		return _rear = (_rear + iSize) % _capacity;
+	}
+
+	int	MoveFront(int iSize)
+	{
+		return _front = (_front + iSize) % _capacity;
+	}
+	/////////////////////////////////////////////////////////////////////////
+	// 버퍼의 Front 포인터 얻음.
+	//
+	// Parameters: 없음.
+	// Return: (char *) 버퍼 포인터.
+	/////////////////////////////////////////////////////////////////////////
+	char* GetFrontBufferPtr(void)
+	{
+		return  _buffer + _front;
+	}
+
+	/////////////////////////////////////////////////////////////////////////
+	// 버퍼의 RearPos 포인터 얻음.
+	//
+	// Parameters: 없음.
+	// Return: (char *) 버퍼 포인터.
+	/////////////////////////////////////////////////////////////////////////
+	char* GetRearBufferPtr(void)
+	{
+		return _buffer + _rear;
+	}
+
+	/////////////////////////////////////////////////////////////////////////
+	// 
+	// WSABUF 링버퍼 send용
+	// 
+	/////////////////////////////////////////////////////////////////////////
+	unsigned int SetRecvWsabufs(WSABUF* wsabufs)
+	{
+		int front = _front;
+		int rear = _rear;
+		int useSize;
+		if (front <= rear)
+			useSize = rear - front;
+		else
+			useSize = _capacity - front + rear;
+
+		int freeSize = _capacity - 1 - useSize;
+
+		wsabufs[0].buf = _buffer + rear;
+
+		int directEnqueueSize;
+
+		if (front > rear)
+			directEnqueueSize = front - rear - 1;
+		// 사이즈 검증을 하지 않기 때문에 front0일때의 예외처리가 필요
+		else if (_front == 0)
+			directEnqueueSize = _capacity - rear - 1;
+		else
+			directEnqueueSize = _capacity - rear;
+
+		wsabufs[0].len = directEnqueueSize;
+
+		wsabufs[1].buf = _buffer;
+		wsabufs[1].len = freeSize - wsabufs[0].len;
+
+		if (wsabufs[1].len == 0)
+			return 1;
+		return 2;
+	}
+
+	CPacket** PickAt(int index)
+	{
+		return (CPacket**)(_buffer + index);
+	}
+	/////////////////////////////////////////////////////////////////////////
+	// 
+	// WSABUF 링버퍼 recv용
+	// 
+	/////////////////////////////////////////////////////////////////////////
+	unsigned int SetSendWsabufs(WSABUF* wsabufs)
+	{
+		int rear = _rear;
+		int front = _front;
+
+		int useSize;
+		if (front <= rear)
+			useSize = rear - front;
+		else
+			useSize = _capacity - front + rear;
+
+		int bufCount = useSize / sizeof(void*);
+		int wasbufIndex = 0;
+
+		if (front < rear)
+		{
+			for (int i = front; i < rear; i += 8)
+			{
+				CPacket** packet = PickAt(i);
+				wsabufs[wasbufIndex].buf = (*packet)->GetBufferPtr();
+				wsabufs[wasbufIndex++].len = (*packet)->GetDataSize();
+			}
+		}
+
+		else // (rear < front)
+		{
+			char leftover[8] = { 0 };
+			int leftoverSize = 0;
+
+			int indexCount = 0;
+			for (int i = front; i < _capacity - 8; i += 8)
+			{
+					CPacket** packet = PickAt(i);
+					wsabufs[wasbufIndex].buf = (*packet)->GetBufferPtr();
+					wsabufs[wasbufIndex++].len = (*packet)->GetDataSize();
+					indexCount++;
+			}
+			leftoverSize = _capacity - (front + indexCount * 8);
+			if (leftoverSize != 0)
+			{
+				memcpy(leftover, (_buffer + (_capacity - leftoverSize)), leftoverSize);
+				memcpy(leftover + leftoverSize, _buffer, 8 - leftoverSize);
+				CPacket** packet = (CPacket**) leftover;
+				wsabufs[wasbufIndex].buf = (*packet)->GetBufferPtr();
+				wsabufs[wasbufIndex++].len = (*packet)->GetDataSize();
+			}
+
+			// 두 번째 구간 처리 (0 ~ rear)
+			for (int i = 8 - leftoverSize; i < rear; i += 8)
+			{
+				// 일반 8바이트 단위 처리
+				CPacket** packet = PickAt(i);
+				wsabufs[wasbufIndex].buf = (*packet)->GetBufferPtr();
+				wsabufs[wasbufIndex++].len = (*packet)->GetDataSize();
+			}
+		}
+		if (wasbufIndex != bufCount)
+			DebugBreak();
+
+		return bufCount;
 	}
 
 	//private:

@@ -64,15 +64,15 @@ using namespace std;
 //        queue[index] = log;
 //    }
 //};
-
+#define RingbufferSize 2002
 class Session
 {
 public:
-	Session() : _recvBuf(2048), _sendBuf(2048), _invalidFlag(-1)
+	Session() : _recvBuf(RingbufferSize), _sendBuf(RingbufferSize), _invalidFlag(-1)
 	{
 	}
 	Session(SOCKET sock, SOCKADDR_IN addr, UINT64 sessionID)
-		: _sock(sock), _addr(addr), _recvBuf(2048), _sendBuf(2048), _sessionID(sessionID), _invalidFlag(-1)
+		: _sock(sock), _addr(addr), _recvBuf(RingbufferSize), _sendBuf(RingbufferSize), _sessionID(sessionID), _invalidFlag(-1)
 	{
 	}
 
@@ -87,12 +87,14 @@ public:
 			DebugBreak();
 		_addr = addr;
 		//_IOCount = 0;
+		_sendCount = 0;
 		_recvBuf.ClearBuffer();
 		_sendBuf.ClearBuffer();
 		_sendFlag = false;
 		_sessionID = sessionID;    
 		_sessionID &= 0x0000FFFFFFFFFFFF;  // 하위 6바이트는 그대로 두고
 		_sessionID |= static_cast<UINT64>(index) << 48;  // 상위 2바이트에 index 값을 삽입
+		
 	}
 
 public:
@@ -100,12 +102,14 @@ public:
 	SOCKADDR_IN _addr;
 
 	CRingBuffer _recvBuf;
-	CRingBuffer _sendBuf;
+	CRingPtrBuffer<CPacket*> _sendBuf;
 
 	WSAOVERLAPPED  _recvOvl;
 	WSAOVERLAPPED  _sendOvl;
 
-	unsigned long _IOCount = 0;
+	volatile long _sendCount;
+
+	volatile long _IOCount = 0;
 	long _sendFlag = false;
 	long _invalidFlag = false;
 	UINT64 _sessionID;

@@ -65,13 +65,15 @@ private:
 	int _acceptTotal = 0;
 	int _acceptCount = 0;
 	int _acceptTPS = 0;
+	int _sessionCount = 0;
 	int _disconnectTotal = 0;
 	int _disconnectCount = 0;
 	int _disconnectTPS = 0;
-	int _recvMessageCount = 0;
 	int _recvMessageTPS = 0;
-	int _sendMessageCount = 0;
 	int _sendMessageTPS = 0;
+	
+	// ½Ã°£
+	
 
 private:
 	HANDLE _acceptThread;
