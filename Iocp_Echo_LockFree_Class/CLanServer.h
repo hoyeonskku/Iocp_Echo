@@ -65,7 +65,6 @@ private:
 	int _acceptTotal = 0;
 	int _acceptCount = 0;
 	int _acceptTPS = 0;
-	int _sessionCount = 0;
 	int _disconnectTotal = 0;
 	int _disconnectCount = 0;
 	int _disconnectTPS = 0;

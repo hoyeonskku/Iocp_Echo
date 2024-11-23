@@ -234,6 +234,8 @@ unsigned int __stdcall CLanServer::NetworkThread(void* arg)
 		}
 		else if (&pSession->_sendOvl == ovl)
 		{
+			if (pSession->_sendCount == 0)
+				DebugBreak();
 			for (unsigned int i = 0; i < pSession->_sendCount; i++)
 			{
 				if (pSession->_sendBuf.GetUseSize() == 0)
@@ -365,13 +367,18 @@ bool CLanServer::SendPost(Session* pSession)
 	WSABUF wsabufs[2000];
 
 	int bufsNum = pSession->_sendBuf.SetSendWsabufs(wsabufs);
+	if (bufsNum == 0) DebugBreak();
 
 	ZeroMemory(&pSession->_sendOvl, sizeof(pSession->_sendOvl));
 	InterlockedIncrement(&pSession->_IOCount);
 	if (pSession->_sock == INVALID_SOCKET)
 		DebugBreak();
 
-	InterlockedAdd(&pSession->_sendCount, bufsNum);
+	// 디버깅용임, 바로 bufsNum로 바꿔줘도 무방함.
+	int sendCount = InterlockedExchange(&pSession->_sendCount, 0);
+	if (sendCount != 0) DebugBreak();
+	InterlockedExchange(&pSession->_sendCount, bufsNum);
+
 	DWORD wsaSendRetval = WSASend(pSession->_sock, wsabufs, bufsNum, NULL, 0, &pSession->_sendOvl, NULL);
 
 	if (wsaSendRetval == SOCKET_ERROR)
@@ -382,8 +389,10 @@ bool CLanServer::SendPost(Session* pSession)
 			if (err == 10054) {}
 			else if (err == 10053) {}
 			else DebugBreak();
-			InterlockedExchange(&pSession->_sendFlag, 0);
 			InterlockedDecrement(&pSession->_IOCount);
+			// 디버깅 검증용임, 안해줘도 무방함
+			sendCount = 0;
+			InterlockedExchange(&pSession->_sendFlag, 0);
 			return false;
 		}
 	}
@@ -396,16 +405,15 @@ bool CLanServer::Release(unsigned long long sessionID)
 	USHORT index = static_cast<USHORT>((sessionID >> 48) & 0xFFFF);
 
 	Session* pSession = &_sessionArray[index];
-
-	for (unsigned int i = 0; i < pSession->_sendCount; i++)
+	int useSize = pSession->_sendBuf.GetUseSize();
+	for (unsigned int i = 0; i < useSize / sizeof(void*); i++)
 	{
-		if (pSession->_sendBuf.GetUseSize() == 0)
-			DebugBreak();
 		CPacket* packet = nullptr;
 		pSession->_sendBuf.Dequeue(&packet);
 		packet->Release();
 	}
-
+	if (pSession->_sendBuf.GetUseSize() != 0)
+		DebugBreak();
 	_acceptCount--;
 	closesocket(_sessionArray[index]._sock);
 	_sessionArray[index]._sock = INVALID_SOCKET;
