@@ -108,6 +108,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -125,12 +126,15 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="CCrashDump.cpp" />
     <ClCompile Include="CGameLenServer.cpp" />
     <ClCompile Include="CLanClient.cpp" />
     <ClCompile Include="CLanServer.cpp" />
+    <ClCompile Include="CLogManager.cpp" />
     <ClCompile Include="CNetClient.cpp" />
     <ClCompile Include="CNetServer.cpp" />
     <ClCompile Include="Iocp_Echo_LockFree_Class.cpp" />
@@ -140,6 +144,7 @@
     <ClInclude Include="CGameLenServer.h" />
     <ClInclude Include="CLanClient.h" />
     <ClInclude Include="CLanServer.h" />
+    <ClInclude Include="CLogManager.h" />
     <ClInclude Include="CNetClient.h" />
     <ClInclude Include="CNetServer.h" />
     <ClInclude Include="CRingBuffer.h" />

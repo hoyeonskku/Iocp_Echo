@@ -64,7 +64,7 @@ using namespace std;
 //        queue[index] = log;
 //    }
 //};
-#define RingbufferSize 2002
+#define RingbufferSize 10000
 class Session
 {
 public:

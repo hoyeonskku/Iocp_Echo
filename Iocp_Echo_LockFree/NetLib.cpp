@@ -71,8 +71,8 @@ unsigned int WINAPI AcceptThread(void* arg)
 unsigned int WINAPI NetworkThread(void* arg)
 {
 	int retval;
-	HANDLE hcp = *(HANDLE*)arg;
 
+	HANDLE hrd = *(HANDLE*)arg;
 	while (1)
 	{
 		// 비동기 입출력 완료 기다리기
@@ -80,7 +80,7 @@ unsigned int WINAPI NetworkThread(void* arg)
 		Session* pSession = nullptr;
 		WSAOVERLAPPED* ovl;
 
-		retval = GetQueuedCompletionStatus(hcp, &cbTransferred,
+		retval = GetQueuedCompletionStatus(hrd, &cbTransferred,
 			(PULONG_PTR)&pSession, &ovl, INFINITE);
 
 		if (pSession->_sock == INVALID_SOCKET)
@@ -100,6 +100,8 @@ unsigned int WINAPI NetworkThread(void* arg)
 		}
 		else if (&pSession->_sendOvl == ovl)
 		{
+			if (pSession->_sendCount == 0)
+				DebugBreak();
 			for (unsigned int i = 0; i < pSession->_sendCount; i++)
 			{
 				if (pSession->_sendBuf.GetUseSize() == 0)
@@ -121,8 +123,8 @@ unsigned int WINAPI NetworkThread(void* arg)
 			Release(pSession->_sessionID);
 		}
 	}
-	return 0;
 }
+
 
 void RecvPost(Session* pSession)
 {
@@ -175,7 +177,8 @@ void SendPost(Session* pSession)
 	if (pSession->_sendBuf.GetUseSize() == 0)
 	{
 		InterlockedExchange(&pSession->_sendFlag, 0);
-		while (true)
+		return;
+		/*while (true)
 		{
 			if (pSession->_sendBuf.GetUseSize() == 0)
 			{
@@ -191,7 +194,7 @@ void SendPost(Session* pSession)
 				continue;
 			}
 			break;
-		}
+		}*/
 	}
 
 	WSABUF wsabufs[2000];
@@ -279,19 +282,20 @@ void OnRecv(UINT64 sessionID, CPacket* packet)
 
 bool Release(UINT64 sessionID)
 {
+
+
 	USHORT index = static_cast<USHORT>((sessionID >> 48) & 0xFFFF);
 
 	Session* pSession = &g_SessionArray[index];
-
-	for (unsigned int i = 0; i < pSession->_sendCount; i++)
+	int useSize = pSession->_sendBuf.GetUseSize();
+	for (unsigned int i = 0; i < useSize / sizeof(void*); i++)
 	{
-		if (pSession->_sendBuf.GetUseSize() == 0)
-			DebugBreak();
 		CPacket* packet = nullptr;
 		pSession->_sendBuf.Dequeue(&packet);
 		packet->Release();
 	}
-
+	if (pSession->_sendBuf.GetUseSize() != 0)
+		DebugBreak();
 	closesocket(g_SessionArray[index]._sock);
 	g_SessionArray[index]._sock = INVALID_SOCKET;
 	g_SessionArray[index]._invalidFlag = -1;

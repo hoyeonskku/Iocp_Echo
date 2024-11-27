@@ -134,9 +134,9 @@ bool CLanServer::Disconnect(unsigned long long sessionID)
 
 bool  CLanServer::SendPacket(unsigned long long sessionID, CPacket* pPacket)
 {
-	pPacket->AddRef();
 	USHORT index = static_cast<USHORT>((sessionID >> 48) & 0xFFFF);
 	Session* pSession = &_sessionArray[index];
+	pPacket->AddRef();
 	pSession->_sendBuf.Enqueue(&pPacket);
 
 	SendPost(&_sessionArray[index]);
@@ -198,6 +198,10 @@ unsigned int __stdcall CLanServer::AcceptThread(void* arg)
 		{
 			server->Release(pSession->_sessionID);
 		}
+
+		server->_acceptCount++;
+		server->_acceptTotal++;
+		server->_acceptTPS++;
 	}
 	return 0;
 }
@@ -229,11 +233,13 @@ unsigned int __stdcall CLanServer::NetworkThread(void* arg)
 
 		else if (&pSession->_recvOvl == ovl)
 		{
+			server->_recvMessageTPS++;
 			server->ProcessRecvMessage(pSession, cbTransferred);
 
 		}
 		else if (&pSession->_sendOvl == ovl)
 		{
+			server->_sendMessageTPS++;
 			if (pSession->_sendCount == 0)
 				DebugBreak();
 			for (unsigned int i = 0; i < pSession->_sendCount; i++)
@@ -273,6 +279,7 @@ void CLanServer::ProcessRecvMessage(Session* pSession, int cbTransferred)
 		pSession->_recvBuf.MoveFront(sizeof(short));
 
 		CPacket* packetData = new CPacket();
+		packetData->AddRef();
 		*packetData << size;
 
 		char* writePos = packetData->GetBufferPtr() + sizeof(short);
@@ -295,6 +302,8 @@ void CLanServer::ProcessRecvMessage(Session* pSession, int cbTransferred)
 		}
 		packetData->MoveWritePos(size);
 		OnRecv(pSession->_sessionID, packetData);
+
+		packetData->Release();
 	}
 	RecvPost(pSession);
 }
@@ -303,7 +312,6 @@ bool CLanServer::RecvPost(Session* pSession)
 {
 	WSABUF wsabufs[2];
 	unsigned int bufsNum = pSession->_recvBuf.SetRecvWsabufs(wsabufs);
-
 	if (wsabufs[0].len + wsabufs[1].len == 0)
 		DebugBreak();
 	DWORD flags = 0;
@@ -391,7 +399,8 @@ bool CLanServer::SendPost(Session* pSession)
 			else DebugBreak();
 			InterlockedDecrement(&pSession->_IOCount);
 			// 디버깅 검증용임, 안해줘도 무방함
-			sendCount = 0;
+			pSession->_sendCount = 0;
+
 			InterlockedExchange(&pSession->_sendFlag, 0);
 			return false;
 		}
@@ -401,7 +410,6 @@ bool CLanServer::SendPost(Session* pSession)
 
 bool CLanServer::Release(unsigned long long sessionID)
 {
-
 	USHORT index = static_cast<USHORT>((sessionID >> 48) & 0xFFFF);
 
 	Session* pSession = &_sessionArray[index];
@@ -415,6 +423,8 @@ bool CLanServer::Release(unsigned long long sessionID)
 	if (pSession->_sendBuf.GetUseSize() != 0)
 		DebugBreak();
 	_acceptCount--;
+	_disconnectTotal++;
+	_disconnectTPS--;
 	closesocket(_sessionArray[index]._sock);
 	_sessionArray[index]._sock = INVALID_SOCKET;
 	_sessionArray[index]._invalidFlag = -1;

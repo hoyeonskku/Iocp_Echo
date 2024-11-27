@@ -66,13 +66,10 @@ private:
 	int _acceptCount = 0;
 	int _acceptTPS = 0;
 	int _disconnectTotal = 0;
-	int _disconnectCount = 0;
+	//int _disconnectCount = 0;
 	int _disconnectTPS = 0;
 	int _recvMessageTPS = 0;
 	int _sendMessageTPS = 0;
-	
-	// ½Ã°£
-	
 
 private:
 	HANDLE _acceptThread;
