@@ -30,5 +30,6 @@ private:
 	unsigned int _logCount;
 	WCHAR _dir[MAX_PATH]; // 로그 파일 경로
 	std::unordered_map<const WCHAR*, CRITICAL_SECTION> _logLockMap;
+	CRITICAL_SECTION _mapLock;
 };
 

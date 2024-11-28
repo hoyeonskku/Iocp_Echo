@@ -3,6 +3,11 @@
 #include <string>
 #include <windows.h>
 
+CLogManager::CLogManager()
+{
+    InitializeCriticalSection(&_mapLock);
+}
+
 CLogManager* CLogManager::GetInstance()
 {
     static CLogManager instance; // 싱글톤 인스턴스 생성
@@ -46,7 +51,14 @@ void CLogManager::Log(const WCHAR* szType, int LogLevel, const WCHAR* szStringFo
         return;
     const auto& lock = _logLockMap.find(szType);
     if (lock == _logLockMap.end())
-        InitializeCriticalSection(&_logLockMap[szType]);
+    {
+        EnterCriticalSection(&_mapLock);
+        const auto& doubleCheckLock = _logLockMap.find(szType);
+        if (doubleCheckLock == _logLockMap.end())
+        {
+            InitializeCriticalSection(&_logLockMap[szType]);
+        };
+    }
     EnterCriticalSection(&_logLockMap[szType]);
     va_list args;
     va_start(args, szStringFormat);
@@ -107,7 +119,14 @@ void CLogManager::LogHex(const WCHAR* szType, int LogLevel, const WCHAR* szLog, 
         return;
     const auto& lock = _logLockMap.find(szType);
     if (lock == _logLockMap.end())
-        InitializeCriticalSection(&_logLockMap[szType]);
+    {
+        EnterCriticalSection(&_mapLock);
+        const auto& doubleCheckLock = _logLockMap.find(szType);
+        if (doubleCheckLock == _logLockMap.end())
+        {
+            InitializeCriticalSection(&_logLockMap[szType]);
+        };
+    }
     EnterCriticalSection(&_logLockMap[szType]);
 
     // 로그 메시지 버퍼
@@ -122,7 +141,8 @@ void CLogManager::LogHex(const WCHAR* szType, int LogLevel, const WCHAR* szLog, 
         st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
 
     WCHAR logLevelStr[32];
-    switch (LogLevel) {
+    switch (LogLevel)
+    {
     case LEVEL_DEBUG:
         wcscpy_s(logLevelStr, L"DEBUG");
         break;
@@ -150,7 +170,8 @@ void CLogManager::LogHex(const WCHAR* szType, int LogLevel, const WCHAR* szLog, 
     WCHAR hexBuffer[2048];
     int hexOffset = 0;
 
-    for (int i = 0; i < iByteLen; i++) {
+    for (int i = 0; i < iByteLen; i++)
+    {
         hexOffset += swprintf_s(hexBuffer + hexOffset, sizeof(hexBuffer) / sizeof(WCHAR) - hexOffset, L"%02X ", pByte[i]);
         // 한 줄에 16바이트씩 출력
         if ((i + 1) % 16 == 0)
@@ -166,4 +187,5 @@ void CLogManager::LogHex(const WCHAR* szType, int LogLevel, const WCHAR* szLog, 
         fclose(pFile);
     }
     LeaveCriticalSection(&_logLockMap[szType]);
+}
 }
