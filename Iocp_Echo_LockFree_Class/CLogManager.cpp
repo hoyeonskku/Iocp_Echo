@@ -5,15 +5,15 @@
 
 CLogManager* CLogManager::GetInstance()
 {
-	static CLogManager instance; // 싱글톤 인스턴스 생성
-	return &instance;
+    static CLogManager instance; // 싱글톤 인스턴스 생성
+    return &instance;
 }
 
 
-void CLogManager::SetDirectory(WCHAR* szDir) {
+void CLogManager::SetDirectory(const WCHAR* szDir) {
     // 디렉토리가 유효한지 검사
     DWORD attributes = GetFileAttributesW(szDir);
-    if (attributes == INVALID_FILE_ATTRIBUTES || !(attributes & FILE_ATTRIBUTE_DIRECTORY)) 
+    if (attributes == INVALID_FILE_ATTRIBUTES || !(attributes & FILE_ATTRIBUTE_DIRECTORY))
         return;
 
     // 디렉토리 경로 복사
@@ -23,14 +23,14 @@ void CLogManager::SetDirectory(WCHAR* szDir) {
 
     // 경로 끝에 '\' 추가
     size_t len = wcslen(_dir);
-    if (_dir[len - 1] != L'\\') 
+    if (_dir[len - 1] != L'\\')
     {
-        if (len + 1 < MAX_PATH) 
+        if (len + 1 < MAX_PATH)
         {
             _dir[len] = L'\\';
             _dir[len + 1] = L'\0';
         }
-        else 
+        else
             return;
     }
 }
@@ -40,11 +40,13 @@ void CLogManager::SetLogLevel(en_LOG_LEVEL level)
     _logLevel = level;
 }
 
-void CLogManager::Log(WCHAR* szType, en_LOG_LEVEL LogLevel, WCHAR* szStringFormat, ...) {
+void CLogManager::Log(const WCHAR* szType, int LogLevel, const WCHAR* szStringFormat, ...) {
 
     if (_logLevel > LogLevel)
         return;
-
+    const auto& lock = _logLockMap.find(szType);
+    if (lock == _logLockMap.end())
+        InitializeCriticalSection(&_logLockMap[szType]);
     EnterCriticalSection(&_logLockMap[szType]);
     va_list args;
     va_start(args, szStringFormat);
@@ -52,6 +54,7 @@ void CLogManager::Log(WCHAR* szType, en_LOG_LEVEL LogLevel, WCHAR* szStringForma
     // 로그 메시지 버퍼
     WCHAR buffer[1024];
     HRESULT hr = StringCchVPrintfW(buffer, sizeof(buffer) / sizeof(WCHAR), szStringFormat, args);
+
     va_end(args);
 
     // 현재 시간 가져오기
@@ -98,19 +101,18 @@ void CLogManager::Log(WCHAR* szType, en_LOG_LEVEL LogLevel, WCHAR* szStringForma
     LeaveCriticalSection(&_logLockMap[szType]);
 }
 
-void CLogManager::LogHex(WCHAR* szType, en_LOG_LEVEL LogLevel, WCHAR* szLog, BYTE* pByte, int iByteLen)
+void CLogManager::LogHex(const WCHAR* szType, int LogLevel, const WCHAR* szLog, BYTE* pByte, int iByteLen)
 {
     if (_logLevel > LogLevel)
         return;
+    const auto& lock = _logLockMap.find(szType);
+    if (lock == _logLockMap.end())
+        InitializeCriticalSection(&_logLockMap[szType]);
     EnterCriticalSection(&_logLockMap[szType]);
-    // 가변 인자 처리
-    va_list args;
-    va_start(args, szLog);
 
     // 로그 메시지 버퍼
     WCHAR buffer[1024];
-    HRESULT hr = StringCchVPrintfW(buffer, sizeof(buffer) / sizeof(WCHAR), szLog, args);
-    va_end(args);
+    HRESULT hr = StringCchCopyW(buffer, sizeof(buffer) / sizeof(WCHAR), szLog);
 
     // 현재 시간 가져오기
     SYSTEMTIME st;
@@ -143,7 +145,7 @@ void CLogManager::LogHex(WCHAR* szType, en_LOG_LEVEL LogLevel, WCHAR* szLog, BYT
 
     // 디렉토리와 파일 이름 생성 (szType을 포함하여 파일 이름 지정)
     WCHAR logFilePath[MAX_PATH];
-    hr = StringCchPrintfW(logFilePath, MAX_PATH, L"%s%04d%02d_%s.txt", _dir, st.wYear, st.wMonth, st.wDay, szType);
+    hr = StringCchPrintfW(logFilePath, MAX_PATH, L"%s%04d%02d_%s.txt", _dir, st.wYear, st.wMonth, szType);
     // 16진수 바이트 배열 로그 추가
     WCHAR hexBuffer[2048];
     int hexOffset = 0;
@@ -151,13 +153,13 @@ void CLogManager::LogHex(WCHAR* szType, en_LOG_LEVEL LogLevel, WCHAR* szLog, BYT
     for (int i = 0; i < iByteLen; i++) {
         hexOffset += swprintf_s(hexBuffer + hexOffset, sizeof(hexBuffer) / sizeof(WCHAR) - hexOffset, L"%02X ", pByte[i]);
         // 한 줄에 16바이트씩 출력
-        if ((i + 1) % 16 == 0) 
+        if ((i + 1) % 16 == 0)
             hexOffset += swprintf_s(hexBuffer + hexOffset, sizeof(hexBuffer) / sizeof(WCHAR) - hexOffset, L"\n");
     }
 
     // 파일 쓰기
     FILE* pFile = nullptr;
-    if (_wfopen_s(&pFile, logFilePath, L"a, ccs=UTF-16LE") == 0 && pFile) 
+    if (_wfopen_s(&pFile, logFilePath, L"a, ccs=UTF-16LE") == 0 && pFile)
     {
         fwprintf(pFile, L"%s\n", logMessage);
         fwprintf(pFile, L"\n%s", hexBuffer);

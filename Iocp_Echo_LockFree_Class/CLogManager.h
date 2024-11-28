@@ -9,24 +9,26 @@ enum en_LOG_LEVEL
 	LEVEL_SYSTEM,
 };
 
-
-
 class CLogManager {
 private:
 	CLogManager() {}
-    ~CLogManager() {  }
+	~CLogManager()
+	{
+		for (auto& it : _logLockMap)
+			DeleteCriticalSection(&it.second);
+	}
 
 public:
-	CLogManager* GetInstance();
-	void SetDirectory(WCHAR* szDir);
+	static CLogManager* GetInstance();
+	void SetDirectory(const WCHAR* szDir);
 	void SetLogLevel(en_LOG_LEVEL level);
-	void Log(WCHAR* szType, en_LOG_LEVEL LogLevel, WCHAR* szStringFormat, ...);
-	void LogHex(WCHAR* szType, en_LOG_LEVEL LogLevel, WCHAR* szLog, BYTE* pByte, int iByteLen);
+	void Log(const WCHAR* szType, int LogLevel, const WCHAR* szStringFormat, ...);
+	void LogHex(const WCHAR* szType, int LogLevel, const WCHAR* szLog, BYTE* pByte, int iByteLen);
 
 private:
-	en_LOG_LEVEL _logLevel;
+	int _logLevel;
 	unsigned int _logCount;
 	WCHAR _dir[MAX_PATH]; // 로그 파일 경로
-	std::unordered_map<WCHAR*, CRITICAL_SECTION> _logLockMap;
+	std::unordered_map<const WCHAR*, CRITICAL_SECTION> _logLockMap;
 };
 

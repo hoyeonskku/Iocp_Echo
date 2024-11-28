@@ -9,66 +9,75 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="소스 파일\ServerCore">
+      <UniqueIdentifier>{8489c349-1c16-4e65-8e3b-bb392e876cf8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="소스 파일\Contents">
+      <UniqueIdentifier>{8de0295b-38ec-48a4-9181-bcc7a9215dc2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="소스 파일\CoreUtils">
+      <UniqueIdentifier>{8a2f3f4b-7c01-4b90-9d23-d9085b6dbb93}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Iocp_Echo_LockFree_Class.cpp">
-      <Filter>소스 파일</Filter>
-    </ClCompile>
-    <ClCompile Include="Session.cpp">
-      <Filter>소스 파일</Filter>
+    <ClCompile Include="CLanClient.cpp">
+      <Filter>소스 파일\ServerCore</Filter>
     </ClCompile>
     <ClCompile Include="CLanServer.cpp">
-      <Filter>소스 파일</Filter>
-    </ClCompile>
-    <ClCompile Include="CLanClient.cpp">
-      <Filter>소스 파일</Filter>
+      <Filter>소스 파일\ServerCore</Filter>
     </ClCompile>
     <ClCompile Include="CNetClient.cpp">
-      <Filter>소스 파일</Filter>
+      <Filter>소스 파일\ServerCore</Filter>
     </ClCompile>
     <ClCompile Include="CNetServer.cpp">
-      <Filter>소스 파일</Filter>
+      <Filter>소스 파일\ServerCore</Filter>
+    </ClCompile>
+    <ClCompile Include="Session.cpp">
+      <Filter>소스 파일\ServerCore</Filter>
     </ClCompile>
     <ClCompile Include="CGameLenServer.cpp">
-      <Filter>소스 파일</Filter>
+      <Filter>소스 파일\Contents</Filter>
+    </ClCompile>
+    <ClCompile Include="Iocp_Echo_LockFree_Class.cpp">
+      <Filter>소스 파일\ServerCore</Filter>
     </ClCompile>
     <ClCompile Include="CCrashDump.cpp">
-      <Filter>소스 파일</Filter>
+      <Filter>소스 파일\CoreUtils</Filter>
     </ClCompile>
     <ClCompile Include="CLogManager.cpp">
-      <Filter>소스 파일</Filter>
+      <Filter>소스 파일\CoreUtils</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Protocol.h">
-      <Filter>소스 파일</Filter>
-    </ClInclude>
-    <ClInclude Include="SerializingBuffer.h">
-      <Filter>소스 파일</Filter>
-    </ClInclude>
-    <ClInclude Include="Session.h">
-      <Filter>소스 파일</Filter>
-    </ClInclude>
-    <ClInclude Include="CRingBuffer.h">
-      <Filter>소스 파일</Filter>
-    </ClInclude>
     <ClInclude Include="CLanClient.h">
-      <Filter>소스 파일</Filter>
+      <Filter>소스 파일\ServerCore</Filter>
     </ClInclude>
     <ClInclude Include="CLanServer.h">
-      <Filter>소스 파일</Filter>
+      <Filter>소스 파일\ServerCore</Filter>
     </ClInclude>
     <ClInclude Include="CNetClient.h">
-      <Filter>소스 파일</Filter>
+      <Filter>소스 파일\ServerCore</Filter>
     </ClInclude>
     <ClInclude Include="CNetServer.h">
-      <Filter>소스 파일</Filter>
+      <Filter>소스 파일\ServerCore</Filter>
+    </ClInclude>
+    <ClInclude Include="Protocol.h">
+      <Filter>소스 파일\Contents</Filter>
+    </ClInclude>
+    <ClInclude Include="SerializingBuffer.h">
+      <Filter>소스 파일\CoreUtils</Filter>
+    </ClInclude>
+    <ClInclude Include="Session.h">
+      <Filter>소스 파일\ServerCore</Filter>
+    </ClInclude>
+    <ClInclude Include="CRingBuffer.h">
+      <Filter>소스 파일\CoreUtils</Filter>
     </ClInclude>
     <ClInclude Include="CGameLenServer.h">
-      <Filter>소스 파일</Filter>
+      <Filter>소스 파일\Contents</Filter>
     </ClInclude>
     <ClInclude Include="CLogManager.h">
-      <Filter>소스 파일</Filter>
+      <Filter>소스 파일\CoreUtils</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
