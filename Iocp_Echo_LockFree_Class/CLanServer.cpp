@@ -1,5 +1,6 @@
 #include "CLanServer.h"
 #include "SerializingBuffer.h"
+#include "CLogManager.h"
 
 bool CLanServer::Start(const wchar_t* IP, short port, int numOfWorkerThreads, bool nagle, int sessionMax)
 {
@@ -90,29 +91,22 @@ void CLanServer::Stop()
 {
 	while (true)
 	{
-		//if (GetAsyncKeyState('Q') & 0x8000)
-		//{
+		closesocket(_listenSocket);
 
-		//	g_bShutdown = true;
-
-		//	// 리슨소켓 제거하여 새로운 연결 없애기
-		//	closesocket(listenSocket);
-
-		//	//// 세션 제거는 나중에 생각해봄...
-		//	//for (auto& pair : )
-		//	//{
-		//	//	if (pair.second->_IOCount != 0)
-		//	//	{
-		//	//		//CancelIoEx((HANDLE)pair.second->_sock, nullptr);
-		//	//		//Release(pair.second->_sessionID);
-		//	//	}
-		//	//}
-
-		//	for (int i = 0; i < 5; i++)
-		//		PostQueuedCompletionStatus(hcp, 0, 0, 0);
-		//	std::cout << "'q' 키 입력: PQCS 전송 완료" << std::endl;
-		//	break;
-		//}
+		// 세션 제거는 나중에 생각해봄...
+		for (int i = 0; i < _sessionMax; i++)
+		{
+			// 이미 디스커넥트 되었으면, cancleioex가 호출되었다는 가정.
+			if (_sessionArray[i]._sock == INVALID_SOCKET)
+				continue;
+			_sessionArray[i]._sock = INVALID_SOCKET;
+			CancelIoEx((HANDLE)_sessionArray[i]._toBeDeletedSock, nullptr);
+		}
+		
+		for (int i = 0; i < _numOfWorkerThreads; i++)
+			PostQueuedCompletionStatus(_iocpHandle, 0, 0, 0);
+		std::cout << "'q' 키 입력: PQCS 전송 완료" << std::endl;
+		break;
 	}
 
 	// 스레드 종료 대기
@@ -129,6 +123,13 @@ void CLanServer::Stop()
 
 bool CLanServer::Disconnect(unsigned long long sessionID)
 {
+	USHORT index = static_cast<USHORT>((sessionID >> 48) & 0xFFFF);
+	Session* pSession = &_sessionArray[index];
+	if (pSession->_sock == INVALID_SOCKET)
+		return true;
+
+	pSession->_sock = INVALID_SOCKET;
+	CancelIoEx((HANDLE)_sessionArray[index]._toBeDeletedSock, nullptr);
 	return false;
 }
 
@@ -139,7 +140,7 @@ bool  CLanServer::SendPacket(unsigned long long sessionID, CPacket* pPacket)
 	pPacket->AddRef();
 	pSession->_sendBuf.Enqueue(&pPacket);
 
-	SendPost(&_sessionArray[index]);
+	SendPost(pSession);
 	return true;
 }
 
@@ -164,7 +165,10 @@ unsigned int __stdcall CLanServer::AcceptThread(void* arg)
 		{
 			int ret = WSAGetLastError();
 			if (ret != 10038 && ret != 10004)
+			{
+				_log(L"Battle", 1, L"%s\n", L"안녕하세요");
 				DebugBreak();
+			}
 			break;
 		}
 
@@ -183,9 +187,6 @@ unsigned int __stdcall CLanServer::AcceptThread(void* arg)
 		}
 
 		CreateIoCompletionPort((HANDLE)client_sock, server->_iocpHandle, (ULONG_PTR)pSession, 0);
-
-		if (pSession->_sock == INVALID_SOCKET)
-			DebugBreak();
 
 		// accept 또한 하나의 io 일감으로 처리해야 리시브가 안 걸린 순간에 삭제를 막을 수 있음.
 		InterlockedIncrement(&pSession->_IOCount);
@@ -220,9 +221,6 @@ unsigned int __stdcall CLanServer::NetworkThread(void* arg)
 
 		retval = GetQueuedCompletionStatus(server->_iocpHandle, &cbTransferred,
 			(PULONG_PTR)&pSession, &ovl, INFINITE);
-
-		if (pSession->_sock == INVALID_SOCKET)
-			DebugBreak();
 
 		if (cbTransferred == 0 && pSession == 0 && ovl == 0)
 			return 0;
@@ -328,6 +326,7 @@ bool CLanServer::RecvPost(Session* pSession)
 		{
 			if (err == 10054) {}
 			else if (err == 10053) {}
+			else if (err == WSAENOTSOCK) {}
 			else DebugBreak();
 			InterlockedDecrement(&pSession->_IOCount);
 			return false;
@@ -396,6 +395,7 @@ bool CLanServer::SendPost(Session* pSession)
 		{
 			if (err == 10054) {}
 			else if (err == 10053) {}
+			else if (err == WSAENOTSOCK) {}
 			else DebugBreak();
 			InterlockedDecrement(&pSession->_IOCount);
 			// 디버깅 검증용임, 안해줘도 무방함
@@ -411,7 +411,6 @@ bool CLanServer::SendPost(Session* pSession)
 bool CLanServer::Release(unsigned long long sessionID)
 {
 	USHORT index = static_cast<USHORT>((sessionID >> 48) & 0xFFFF);
-
 	Session* pSession = &_sessionArray[index];
 	int useSize = pSession->_sendBuf.GetUseSize();
 	for (unsigned int i = 0; i < useSize / sizeof(void*); i++)
@@ -425,8 +424,8 @@ bool CLanServer::Release(unsigned long long sessionID)
 	_acceptCount--;
 	_disconnectTotal++;
 	_disconnectTPS--;
-	closesocket(_sessionArray[index]._sock);
-	_sessionArray[index]._sock = INVALID_SOCKET;
+	closesocket(_sessionArray[index]._toBeDeletedSock);
 	_sessionArray[index]._invalidFlag = -1;
 	return true;
 }
+

@@ -43,8 +43,8 @@ private:
 
 	bool RecvPost(Session* pSession);
 	bool SendPost(Session* pSession);
-
 	bool Release(unsigned long long sessionID);
+	bool ShutdownServer();
 
 private:
 	Session* _sessionArray;

@@ -83,6 +83,7 @@ public:
 	void Clear(SOCKET sock, SOCKADDR_IN addr, UINT64 sessionID, USHORT index)
 	{
 		_sock = sock;
+		_toBeDeletedSock = sock;
 		if (_sock == INVALID_SOCKET)
 			DebugBreak();
 		_addr = addr;
@@ -99,6 +100,7 @@ public:
 
 public:
 	SOCKET _sock;
+	SOCKET _toBeDeletedSock;
 	SOCKADDR_IN _addr;
 
 	CRingBuffer _recvBuf;
