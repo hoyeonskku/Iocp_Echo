@@ -1,16 +1,23 @@
 #include "CLanServer.h"
 #include "SerializingBuffer.h"
 #include "CLogManager.h"
+#include "CProcessCpuUsage.h"
+#include "CProcessorCpuUsage.h"
 
 bool CLanServer::Start(const wchar_t* IP, short port, int numOfWorkerThreads, bool nagle, int sessionMax)
 {
-
 	_port = port;
 	_numOfWorkerThreads = numOfWorkerThreads;
 	_nagle = nagle;
 	_sessionMax = sessionMax;
 
+	_startTime = _currentTime = timeGetTime();
+
 	_sessionArray = new Session[sessionMax];
+
+	for (int i = sessionMax - 1; i > -1; --i)
+		_sessionIndexStack.Push(i);
+
 	int WSAStartUpRetval;
 	timeBeginPeriod(1);
 	WSADATA wsaData;
@@ -79,6 +86,7 @@ bool CLanServer::Start(const wchar_t* IP, short port, int numOfWorkerThreads, bo
 	}
 
 	_acceptThread = (HANDLE)_beginthreadex(NULL, 0, AcceptThread, this, 0, nullptr);
+	_monitorThread = (HANDLE)_beginthreadex(NULL, 0, MonitorThread, this, 0, nullptr);
 
 	_networkThreads = new HANDLE[_numOfWorkerThreads];
 	for (int i = 0; i < _numOfWorkerThreads; i++)
@@ -133,12 +141,13 @@ bool CLanServer::Disconnect(unsigned long long sessionID)
 	return false;
 }
 
-bool  CLanServer::SendPacket(unsigned long long sessionID, CPacket* pPacket)
+bool CLanServer::SendPacket(unsigned long long sessionID, CPacket* pPacket)
 {
 	USHORT index = static_cast<USHORT>((sessionID >> 48) & 0xFFFF);
 	Session* pSession = &_sessionArray[index];
 	pPacket->AddRef();
 	pSession->_sendBuf.Enqueue(&pPacket);
+	InterlockedIncrement(&_sendMessageTPS);
 
 	SendPost(pSession);
 	return true;
@@ -166,7 +175,6 @@ unsigned int __stdcall CLanServer::AcceptThread(void* arg)
 			int ret = WSAGetLastError();
 			if (ret != 10038 && ret != 10004)
 			{
-				_log(L"Battle", 1, L"%s\n", L"안녕하세요");
 				DebugBreak();
 			}
 			break;
@@ -174,23 +182,37 @@ unsigned int __stdcall CLanServer::AcceptThread(void* arg)
 
 		Session* pSession = nullptr;
 
-		for (int i = 0; i < 10000; i++)
-		{
-			if (/*g_SessionArray[i]._invalidFlag == -1 &&*/ InterlockedExchange(&server->_sessionArray[i]._invalidFlag, 1) == -1)
-			{
-				pSession = &server->_sessionArray [i];
-				pSession->Clear(client_sock, clientaddr, server->_sessionIDCount++, i);
-				break;
-			}
-			if (i == 9999)
-				DebugBreak();
-		}
+		int index;
+		server->_sessionIndexStack.Pop(index);
+		pSession = &server->_sessionArray[index];
+		SessionLog log;
+		log.eventType = 0;
+		log.index = index;
+		log.threadID = GetCurrentThreadId();
+		pSession->_sessionLogQueue.enqueue(log);
+		if (pSession->_invalidFlag == 1)
+			DebugBreak();
+		pSession->_invalidFlag = 1;
+		pSession->Clear(client_sock, clientaddr, server->_sessionIDCount++, index);
+
+		//for (int i = 0; i < 10000; i++)
+		//{
+		//	if (/*g_SessionArray[i]._invalidFlag == -1 &&*/ InterlockedExchange(&server->_sessionArray[i]._invalidFlag, 1) == -1)
+		//	{
+		//		pSession = &server->_sessionArray[i];
+		//		pSession->Clear(client_sock, clientaddr, server->_sessionIDCount++, i);
+		//		break;
+		//	}
+		//	if (i == 9999)
+		//		DebugBreak();
+		//}
 
 		CreateIoCompletionPort((HANDLE)client_sock, server->_iocpHandle, (ULONG_PTR)pSession, 0);
 
 		// accept 또한 하나의 io 일감으로 처리해야 리시브가 안 걸린 순간에 삭제를 막을 수 있음.
 		InterlockedIncrement(&pSession->_IOCount);
 
+		InterlockedIncrement(&server->_sessionCount);
 		server->OnAccept(pSession->_sessionID);
 		server->RecvPost(pSession);
 
@@ -200,9 +222,9 @@ unsigned int __stdcall CLanServer::AcceptThread(void* arg)
 			server->Release(pSession->_sessionID);
 		}
 
-		server->_acceptCount++;
-		server->_acceptTotal++;
-		server->_acceptTPS++;
+		InterlockedIncrement(&server->_acceptCount);
+		InterlockedIncrement(&server->_acceptTotal);
+		InterlockedIncrement(&server->_acceptTPS);
 	}
 	return 0;
 }
@@ -231,13 +253,11 @@ unsigned int __stdcall CLanServer::NetworkThread(void* arg)
 
 		else if (&pSession->_recvOvl == ovl)
 		{
-			server->_recvMessageTPS++;
 			server->ProcessRecvMessage(pSession, cbTransferred);
 
 		}
 		else if (&pSession->_sendOvl == ovl)
 		{
-			server->_sendMessageTPS++;
 			if (pSession->_sendCount == 0)
 				DebugBreak();
 			for (unsigned int i = 0; i < pSession->_sendCount; i++)
@@ -261,6 +281,73 @@ unsigned int __stdcall CLanServer::NetworkThread(void* arg)
 			server->Release(pSession->_sessionID);
 		}
 	}
+}
+
+unsigned int __stdcall CLanServer::MonitorThread(void* arg)
+{
+	CLanServer* server = (CLanServer*)arg;
+	CProcessCpuUsage cProcessCpuUsage;
+	CProcessorCpuUsage cProcessorCpuUsage;
+
+	WCHAR text[1000];
+	while (true)
+	{
+		server->_currentTime = timeGetTime();
+		DWORD timeDiff = server->_currentTime - server->_startTime;
+		cProcessorCpuUsage.UpdateProcessorCpuTime();
+		cProcessCpuUsage.UpdateProcessCpuTime();
+		cProcessCpuUsage.UpdateProcessMemory();
+		cProcessCpuUsage.UpdateMemory();
+
+		SYSTEMTIME stTime;
+		GetLocalTime(&stTime);
+		swprintf_s(
+			text, 1000,
+			L"[%s %02d:%02d:%02d]\n\n"
+
+			L"Connected Session : %d\n"
+			L"Total Accept : %d\n"
+			L"Total Disconnect : %d\n"
+
+			L"Recv / 1sec: % d\n"
+			L"Send / 1sec: % d\n"
+			L"Accept / 1sec: % d\n"
+			L"Disconnect / 1sec: % d\n\n"
+
+			L"CPU Usage: % lf\n"
+			L"Available Memory MBytes: % lld\n"
+			L"Pool Nonpaged Bytes: % lld\n"
+
+			L"Process CPU Usage: % lf\n"
+			L"Process Private Memory Bytes: % lld\n"
+			L"Process Pool Nonpaged Bytes: % lld\n"
+
+			L"============================================\n\n",
+
+			L"" __DATE__, stTime.wHour, stTime.wMinute, stTime.wSecond,
+
+			server->GetSessionCount(),
+			server->GetAcceptTotal(),
+			server->GetDisconnectTotal(),
+
+			server->ResetRecvMessageTPS(),
+			server->ResetSendMessageTPS(),
+			server->ResetAcceptTPS(),
+			server->ResetDisconnectTPS(),
+
+			cProcessorCpuUsage.GetProcessorTotalTime(),
+			cProcessCpuUsage.GetAvailableMemoryUsage(),
+			cProcessCpuUsage.GetPoolNonpagedMemoryUsage(),
+
+			cProcessCpuUsage.GetProcessTotalTime(),
+			cProcessCpuUsage.GetProcessPrivateMemoryUsage(),
+			cProcessCpuUsage.GetProcessPoolNonpagedMemoryUsage()
+		);
+
+		::wprintf(L"%s", text);
+		Sleep(1000);
+	}
+	return 0;
 }
 
 void CLanServer::ProcessRecvMessage(Session* pSession, int cbTransferred)
@@ -300,7 +387,7 @@ void CLanServer::ProcessRecvMessage(Session* pSession, int cbTransferred)
 		}
 		packetData->MoveWritePos(size);
 		OnRecv(pSession->_sessionID, packetData);
-
+		InterlockedIncrement(&_recvMessageTPS);
 		packetData->Release();
 	}
 	RecvPost(pSession);
@@ -371,7 +458,7 @@ bool CLanServer::SendPost(Session* pSession)
 		}
 	}
 
-	WSABUF wsabufs[2000];
+	WSABUF wsabufs[200];
 
 	int bufsNum = pSession->_sendBuf.SetSendWsabufs(wsabufs);
 	if (bufsNum == 0) DebugBreak();
@@ -421,11 +508,20 @@ bool CLanServer::Release(unsigned long long sessionID)
 	}
 	if (pSession->_sendBuf.GetUseSize() != 0)
 		DebugBreak();
-	_acceptCount--;
-	_disconnectTotal++;
-	_disconnectTPS--;
+	InterlockedDecrement(&_acceptCount);
+	InterlockedIncrement(&_disconnectTotal);
+	InterlockedIncrement(&_disconnectTPS);
+	InterlockedDecrement(&_sessionCount);
 	closesocket(_sessionArray[index]._toBeDeletedSock);
-	_sessionArray[index]._invalidFlag = -1;
+	_sessionArray[index]._invalidFlag = 0;
+
+	SessionLog log;
+	log.eventType = 14;
+	log.index = index;
+	log.threadID = GetCurrentThreadId();
+	pSession->_sessionLogQueue.enqueue(log);
+
+	_sessionIndexStack.Push(index);
 	return true;
 }
 

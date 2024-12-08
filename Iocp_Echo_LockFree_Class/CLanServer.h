@@ -1,6 +1,7 @@
 #pragma once
 #include "Session.h"
 #include "Protocol.h"
+#include "CLockFreeStack.h"
 
 #include <ws2tcpip.h>
 #include <process.h>
@@ -31,13 +32,37 @@ public:
 
 	int GetSessionCount() { return _sessionCount; }
 	int GetAcceptTPS() { return _acceptTPS; }
-	int GetDiscounnectTPS() { return _disconnectTPS; }
+	int GetDisconnectTPS() { return _disconnectTPS; }
 	int GetRecvMessageTPS() { return _recvMessageTPS; }
-	int GetSendMessageTPS() { return _acceptTPS; }
+	int GetSendMessageTPS() { return _sendMessageTPS; }
+
+	int ResetAcceptTPS() 
+	{ 
+		return InterlockedExchange(&_acceptTPS, 0);
+	}
+	int ResetDisconnectTPS() 
+	{ 
+		return InterlockedExchange(&_disconnectTPS, 0);
+	}
+	int ResetRecvMessageTPS() 
+	{ 
+		return InterlockedExchange(&_recvMessageTPS, 0);
+	}
+	int ResetSendMessageTPS() 
+	{ 
+		return InterlockedExchange(&_sendMessageTPS, 0);
+	}
+
+	int GetAcceptCount(){ return _acceptCount; }
+	int GetAcceptTotal(){ return _acceptTotal; }
+
+	int GetDisconnectCount(){ return _disconnectCount; }
+	int GetDisconnectTotal(){ return _disconnectTotal; }
 
 private:
 	static unsigned int WINAPI AcceptThread(void* arg);
 	static unsigned int WINAPI NetworkThread(void* arg);
+	static unsigned int WINAPI MonitorThread(void* arg);
 
 	void ProcessRecvMessage(Session* pSession, int cbTransferred);
 
@@ -47,31 +72,39 @@ private:
 	bool ShutdownServer();
 
 private:
+	CLockFreeStack<int> _sessionIndexStack;
 	Session* _sessionArray;
 	SOCKET _listenSocket;
-	short _sessionCount = 0;
+	long _sessionCount = 0;
 	unsigned long long _sessionIDCount = 0;
 	bool _bShutdown = false;
 	HANDLE _iocpHandle;
+
+	DWORD _startTime;
+	DWORD _currentTime;
+
 
 private:
 	wchar_t _IP[10];
 	short _port;
 	int _numOfWorkerThreads;
 	bool _nagle;
-	int _sessionMax;
+	long _sessionMax;
 
 private:
-	int _acceptTotal = 0;
-	int _acceptCount = 0;
-	int _acceptTPS = 0;
-	int _disconnectTotal = 0;
-	//int _disconnectCount = 0;
-	int _disconnectTPS = 0;
-	int _recvMessageTPS = 0;
-	int _sendMessageTPS = 0;
+	long _acceptTotal = 0;
+	long _acceptCount = 0;
+	long _acceptTPS = 0;
+
+	long _disconnectTotal = 0;
+	long _disconnectCount = 0;
+	long _disconnectTPS = 0;
+
+	long _recvMessageTPS = 0;
+	long _sendMessageTPS = 0;
 
 private:
 	HANDLE _acceptThread;
+	HANDLE _monitorThread;
 	HANDLE* _networkThreads;
 };

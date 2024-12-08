@@ -273,7 +273,7 @@ bool LogTagLock::ResizeBuffer()
     int newbufLen = _bufLen * 2;
     if (newbufLen < _bufLen)
     {
-        _log(_tagName, LEVEL_SYSTEM, L"버퍼 크기를 조정할 수 없습니다");
+        //_log(_tagName, LEVEL_SYSTEM, L"버퍼 크기를 조정할 수 없습니다");
         return false;
     }
     _bufLen = newbufLen;

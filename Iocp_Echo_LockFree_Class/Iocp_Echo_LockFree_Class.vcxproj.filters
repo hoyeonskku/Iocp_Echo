@@ -47,6 +47,18 @@
     <ClCompile Include="CLogManager.cpp">
       <Filter>소스 파일\CoreUtils</Filter>
     </ClCompile>
+    <ClCompile Include="CProcessCpuUsage.cpp">
+      <Filter>소스 파일\CoreUtils</Filter>
+    </ClCompile>
+    <ClCompile Include="CProcessorCpuUsage.cpp">
+      <Filter>소스 파일\CoreUtils</Filter>
+    </ClCompile>
+    <ClCompile Include="CObjectPool.h">
+      <Filter>소스 파일\CoreUtils</Filter>
+    </ClCompile>
+    <ClCompile Include="CAddressTranslator.h">
+      <Filter>소스 파일\CoreUtils</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CLanClient.h">
@@ -77,6 +89,18 @@
       <Filter>소스 파일\Contents</Filter>
     </ClInclude>
     <ClInclude Include="CLogManager.h">
+      <Filter>소스 파일\CoreUtils</Filter>
+    </ClInclude>
+    <ClInclude Include="CProcessCpuUsage.h">
+      <Filter>소스 파일\CoreUtils</Filter>
+    </ClInclude>
+    <ClInclude Include="CProcessorCpuUsage.h">
+      <Filter>소스 파일\CoreUtils</Filter>
+    </ClInclude>
+    <ClInclude Include="CLockFreeStack.h">
+      <Filter>소스 파일\CoreUtils</Filter>
+    </ClInclude>
+    <ClInclude Include="CCrashDump.h">
       <Filter>소스 파일\CoreUtils</Filter>
     </ClInclude>
   </ItemGroup>

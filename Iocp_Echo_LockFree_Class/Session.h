@@ -5,65 +5,66 @@
 #include "CRingBuffer.h"
 using namespace std;
 
-//
-//enum EventType
-//{
-//	ACCEPT,
-//	ACCEPTSEND,
-//	ACCEPTSENDFAIL,
-//	ACCEPTRECVFAIL,
-//	RECV,
-//	RECVCOMPLETE,
-//	RECVFAIL,
-//	RECV0,
-//	SEND,
-//	SENDCOMPLETE,
-//	SENDFAIL,
-//	SENDFIRSTSIZE0,
-//	SENDFLAGNOTAQUIRED,
-//	SENDSECONDSIZE0,
-//	RELEASE,
-//	CLEAR,
-// };
-//
-//struct SessionLog
-//{
-//	unsigned long long sock;
-//    int eventType;
-//	unsigned long threadID;
-//    int ioCount;
-//	int line;
-//    int transfered = -1;
-//};
-//
-//class SessionLogQueue
-//{
-//private:
-//    SessionLog queue[100];
-//    volatile long rear;
-//    int capacity;
-//    int size;
-//
-//public:
-//    // 생성자: 큐의 크기를 설정하고 초기화
-//    SessionLogQueue(int capacity = 100)
-//        : capacity(capacity), rear(0), size(0)
-//    {
-//    }
-//
-//    // 소멸자: 큐 메모리 해제
-//    ~SessionLogQueue()
-//    {
-//        delete[] queue;
-//    }
-//
-//    // 큐에 로그 추가
-//    void enqueue(const SessionLog& log)
-//    {
-//		int index = InterlockedExchange(&rear, (rear + 1) % capacity);
-//        queue[index] = log;
-//    }
-//};
+
+enum EventType
+{
+	ACCEPT,
+	ACCEPTSEND,
+	ACCEPTSENDFAIL,
+	ACCEPTRECVFAIL,
+	RECV,
+	RECVCOMPLETE,
+	RECVFAIL,
+	RECV0,
+	SEND,
+	SENDCOMPLETE,
+	SENDFAIL,
+	SENDFIRSTSIZE0,
+	SENDFLAGNOTAQUIRED,
+	SENDSECONDSIZE0,
+	RELEASE,
+	CLEAR,
+ };
+
+struct SessionLog
+{
+    int eventType;
+	int index;
+	unsigned long long sock;
+	unsigned long threadID;
+    int ioCount;
+	int line;
+    int transfered = -1;
+};
+
+class SessionLogQueue
+{
+private:
+    SessionLog queue[100];
+    volatile long rear;
+    int capacity;
+    int size;
+
+public:
+    // 생성자: 큐의 크기를 설정하고 초기화
+    SessionLogQueue(int capacity = 99)
+        : capacity(capacity), rear(0), size(0)
+    {
+    }
+
+    // 소멸자: 큐 메모리 해제
+    ~SessionLogQueue()
+    {
+        delete[] queue;
+    }
+
+    // 큐에 로그 추가
+    void enqueue(const SessionLog& log)
+    {
+		int index = InterlockedExchange(&rear, (rear + 1) % capacity);
+        queue[index] = log;
+    }
+};
 #define RingbufferSize 10000
 class Session
 {
@@ -118,4 +119,5 @@ public:
 
 	long _recvBytes = 0;
 	long _sendReservedBytes = 0;
+	SessionLogQueue _sessionLogQueue;
 };

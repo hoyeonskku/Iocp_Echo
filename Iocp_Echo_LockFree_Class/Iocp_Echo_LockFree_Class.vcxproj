@@ -104,7 +104,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -121,7 +121,7 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <Optimization>Disabled</Optimization>
-      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -132,6 +132,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="CAddressTranslator.h" />
     <ClCompile Include="CCrashDump.cpp" />
     <ClCompile Include="CGameLenServer.cpp" />
     <ClCompile Include="CLanClient.cpp" />
@@ -139,16 +140,23 @@
     <ClCompile Include="CLogManager.cpp" />
     <ClCompile Include="CNetClient.cpp" />
     <ClCompile Include="CNetServer.cpp" />
+    <ClCompile Include="CObjectPool.h" />
+    <ClCompile Include="CProcessCpuUsage.cpp" />
+    <ClCompile Include="CProcessorCpuUsage.cpp" />
     <ClCompile Include="Iocp_Echo_LockFree_Class.cpp" />
     <ClCompile Include="Session.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="CCrashDump.h" />
     <ClInclude Include="CGameLenServer.h" />
     <ClInclude Include="CLanClient.h" />
     <ClInclude Include="CLanServer.h" />
+    <ClInclude Include="CLockFreeStack.h" />
     <ClInclude Include="CLogManager.h" />
     <ClInclude Include="CNetClient.h" />
     <ClInclude Include="CNetServer.h" />
+    <ClInclude Include="CProcessCpuUsage.h" />
+    <ClInclude Include="CProcessorCpuUsage.h" />
     <ClInclude Include="CRingBuffer.h" />
     <ClInclude Include="Protocol.h" />
     <ClInclude Include="SerializingBuffer.h" />
