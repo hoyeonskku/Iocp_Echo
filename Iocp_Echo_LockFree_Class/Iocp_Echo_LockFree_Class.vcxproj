@@ -140,6 +140,7 @@
     <ClCompile Include="CLogManager.cpp" />
     <ClCompile Include="CNetClient.cpp" />
     <ClCompile Include="CNetServer.cpp" />
+    <ClCompile Include="CNetworkUsage.cpp" />
     <ClCompile Include="CObjectPool.h" />
     <ClCompile Include="CProcessCpuUsage.cpp" />
     <ClCompile Include="CProcessorCpuUsage.cpp" />
@@ -155,6 +156,7 @@
     <ClInclude Include="CLogManager.h" />
     <ClInclude Include="CNetClient.h" />
     <ClInclude Include="CNetServer.h" />
+    <ClInclude Include="CNetworkUsage.h" />
     <ClInclude Include="CProcessCpuUsage.h" />
     <ClInclude Include="CProcessorCpuUsage.h" />
     <ClInclude Include="CRingBuffer.h" />

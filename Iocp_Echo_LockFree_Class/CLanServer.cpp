@@ -3,6 +3,7 @@
 #include "CLogManager.h"
 #include "CProcessCpuUsage.h"
 #include "CProcessorCpuUsage.h"
+#include "CNetworkUsage.h"
 
 bool CLanServer::Start(const wchar_t* IP, short port, int numOfWorkerThreads, bool nagle, int sessionMax)
 {
@@ -288,6 +289,7 @@ unsigned int __stdcall CLanServer::MonitorThread(void* arg)
 	CLanServer* server = (CLanServer*)arg;
 	CProcessCpuUsage cProcessCpuUsage;
 	CProcessorCpuUsage cProcessorCpuUsage;
+	CNetworkUsage cNetworkUsage;
 
 	WCHAR text[1000];
 	while (true)
@@ -298,6 +300,7 @@ unsigned int __stdcall CLanServer::MonitorThread(void* arg)
 		cProcessCpuUsage.UpdateProcessCpuTime();
 		cProcessCpuUsage.UpdateProcessMemory();
 		cProcessCpuUsage.UpdateMemory();
+		cNetworkUsage.UpdateNetworkUsage();
 
 		SYSTEMTIME stTime;
 		GetLocalTime(&stTime);
@@ -322,6 +325,9 @@ unsigned int __stdcall CLanServer::MonitorThread(void* arg)
 			L"Process Private Memory Bytes: % lld\n"
 			L"Process Pool Nonpaged Bytes: % lld\n"
 
+			L"Ethernet Recv Bytes: % lf\n"
+			L"Ethernet Send Bytes: % lf\n"
+
 			L"============================================\n\n",
 
 			L"" __DATE__, stTime.wHour, stTime.wMinute, stTime.wSecond,
@@ -341,7 +347,11 @@ unsigned int __stdcall CLanServer::MonitorThread(void* arg)
 
 			cProcessCpuUsage.GetProcessTotalTime(),
 			cProcessCpuUsage.GetProcessPrivateMemoryUsage(),
-			cProcessCpuUsage.GetProcessPoolNonpagedMemoryUsage()
+			cProcessCpuUsage.GetProcessPoolNonpagedMemoryUsage(),
+
+			cNetworkUsage.GetRecvBytes(),
+			cNetworkUsage.GetSendBytes()
+
 		);
 
 		::wprintf(L"%s", text);

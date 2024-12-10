@@ -59,6 +59,9 @@
     <ClCompile Include="CAddressTranslator.h">
       <Filter>소스 파일\CoreUtils</Filter>
     </ClCompile>
+    <ClCompile Include="CNetworkUsage.cpp">
+      <Filter>소스 파일\CoreUtils</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CLanClient.h">
@@ -101,6 +104,9 @@
       <Filter>소스 파일\CoreUtils</Filter>
     </ClInclude>
     <ClInclude Include="CCrashDump.h">
+      <Filter>소스 파일\CoreUtils</Filter>
+    </ClInclude>
+    <ClInclude Include="CNetworkUsage.h">
       <Filter>소스 파일\CoreUtils</Filter>
     </ClInclude>
   </ItemGroup>
