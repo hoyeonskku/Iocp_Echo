@@ -3,6 +3,7 @@
 #include <ws2tcpip.h>
 #include <unordered_map>
 #include "CRingBuffer.h"
+#include "CLockFreeQueue.h"
 using namespace std;
 
 
@@ -69,11 +70,11 @@ public:
 class Session
 {
 public:
-	Session() : _recvBuf(RingbufferSize), _sendBuf(RingbufferSize), _invalidFlag(-1)
+	Session() : _recvBuf(RingbufferSize), /*_sendBuf(RingbufferSize),*/ _invalidFlag(-1)
 	{
 	}
 	Session(SOCKET sock, SOCKADDR_IN addr, UINT64 sessionID)
-		: _sock(sock), _addr(addr), _recvBuf(RingbufferSize), _sendBuf(RingbufferSize), _sessionID(sessionID), _invalidFlag(-1)
+		: _sock(sock), _addr(addr), _recvBuf(RingbufferSize), /*_sendBuf(RingbufferSize),*/ _sessionID(sessionID), _invalidFlag(-1)
 	{
 	}
 
@@ -91,7 +92,7 @@ public:
 		//_IOCount = 0;
 		_sendCount = 0;
 		_recvBuf.ClearBuffer();
-		_sendBuf.ClearBuffer();
+		//_sendBuf.ClearBuffer();
 		_sendFlag = false;
 		_sessionID = sessionID;
 		_sessionID &= 0x0000FFFFFFFFFFFF;  // 하위 6바이트는 그대로 두고
@@ -105,7 +106,9 @@ public:
 	SOCKADDR_IN _addr;
 
 	CRingBuffer _recvBuf;
-	CRingPtrBuffer<CPacket*> _sendBuf;
+	//CRingPtrBuffer<CPacket*> _sendBuf;
+	CLockFreeQueue<CPacket*> _sendBuf;
+	CPacket* _pSendPacketArr[50];
 
 	WSAOVERLAPPED  _recvOvl;
 	WSAOVERLAPPED  _sendOvl;

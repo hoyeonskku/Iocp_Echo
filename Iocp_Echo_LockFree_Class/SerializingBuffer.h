@@ -334,13 +334,13 @@ public:
 
 		return refCount;
 	}
+	unsigned int _refCount = 0;
 
 protected:
 	char _buffer[eBUFFER_DEFAULT];
 	unsigned int _rear = 0;
 	unsigned int _front = 0;
 	unsigned int _capacity;
-	unsigned int _refCount = 0;
 };
 
 #endif

@@ -13,38 +13,15 @@ enum StackEventType
 
 
 template <typename T>
-class Node
+class StackNode
 {
 public:
-	Node<T>(T value) : _value(value) {}
-	~Node<T>() {}
+	StackNode<T>(T value) : _value(value) {}
+	~StackNode<T>() {}
 
 public:
 	T _value;
-	Node<T>* _pNextValue = nullptr;
-};
-
-template <typename T>
-class LogClass
-{
-public:
-	StackEventType _type;
-	Node<T>* _pCurrent = nullptr;
-	Node<T>* _pNext = nullptr;
-};
-
-template <typename T>
-class LogQueue
-{
-public:
-	LogClass<T> _arr[10000];
-	unsigned long long _count;
-
-	void Enqueue(LogClass<T>& logClass)
-	{
-		unsigned long long index = InterlockedIncrement(&_count) % 10000;
-		_arr[index] = logClass;
-	}
+	StackNode<T>* _pNextValue = nullptr;
 };
 
 // 상위 17비트를 식별자로 사용
@@ -59,19 +36,19 @@ public:
 
 	void Push(T data)
 	{
-		Node<T>* pNewNode;
-		Node<T>* pNewNodeValue;
-		Node<T>* pNewNodeNextValue;
+		StackNode<T>* pNewNode;
+		StackNode<T>* pNewNodeValue;
+		StackNode<T>* pNewNodeNextValue;
 		pNewNode = _pool.Alloc();
 		pNewNode->_value = data;
-		pNewNodeValue = (Node<T>*)MAKE_VALUE(_id, pNewNode);
+		pNewNodeValue = (StackNode<T>*)MAKE_VALUE(_id, pNewNode);
 		do
 		{
 			pNewNodeNextValue = _pTopNodeValue;
 			pNewNode->_pNextValue = pNewNodeNextValue;
 		}
 		// top이 저장한 값과 같은 경우에만 Push, 노드를 새로운 top으로 변경
-		while ((Node<T>*) InterlockedCompareExchange((unsigned long long*) & _pTopNodeValue, (unsigned long long) pNewNodeValue, (unsigned long long) pNewNodeNextValue) != pNewNodeNextValue);
+		while ((StackNode<T>*) InterlockedCompareExchange((unsigned long long*) & _pTopNodeValue, (unsigned long long) pNewNodeValue, (unsigned long long) pNewNodeNextValue) != pNewNodeNextValue);
 
 		//LogClass<T> logClass;
 		//logClass._pCurrent = (Node<T>*)MAKE_NODE(pNewNodeValue);
@@ -82,19 +59,19 @@ public:
 
 	bool Pop(T& data)
 	{
-		Node<T>* pReleaseNode;
-		Node<T>* pReleaseNodeValue;
-		Node<T>* pReleaseNodeNextValue;
+		StackNode<T>* pReleaseNode;
+		StackNode<T>* pReleaseNodeValue;
+		StackNode<T>* pReleaseNodeNextValue;
 		do
 		{
 			pReleaseNodeValue = _pTopNodeValue;
-			pReleaseNode = (Node<T>*) MAKE_NODE(pReleaseNodeValue);
+			pReleaseNode = (StackNode<T>*) MAKE_NODE(pReleaseNodeValue);
 			if (pReleaseNodeValue == nullptr)
 				DebugBreak();
 			pReleaseNodeNextValue = pReleaseNode->_pNextValue;
 		}
 		// top이 제거하려는 노드인 경우에만 Pop, next를 새로운 top으로 변경
-		while ((Node<T>*)InterlockedCompareExchange((unsigned long long*) & _pTopNodeValue, (unsigned long long) pReleaseNodeNextValue, (unsigned long long)pReleaseNodeValue) != pReleaseNodeValue);
+		while ((StackNode<T>*)InterlockedCompareExchange((unsigned long long*) & _pTopNodeValue, (unsigned long long) pReleaseNodeNextValue, (unsigned long long)pReleaseNodeValue) != pReleaseNodeValue);
 		data = pReleaseNode->_value;
 		//LogClass<T> logClass;
 		//logClass._pCurrent = (Node<T>*) MAKE_NODE(pReleaseNodeValue);
@@ -107,9 +84,8 @@ public:
 	}
 
 private:
-	CMemoryPool<Node<T>> _pool;
-	Node<T>* _pTopNodeValue = nullptr;
+	CMemoryPool<StackNode<T>> _pool;
+	StackNode<T>* _pTopNodeValue = nullptr;
 	unsigned long long _id = 0;
-	LogQueue<T> _logQueue;
 };
 

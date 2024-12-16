@@ -3,6 +3,7 @@
 #include <iostream>
 #include <assert.h>
 #include "SerializingBuffer.h"
+#include "Windows.h"
 
 class CRingBuffer
 {
